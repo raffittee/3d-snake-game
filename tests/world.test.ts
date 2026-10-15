@@ -1,0 +1,113 @@
+import { describe, expect, it } from 'vitest';
+import { level01 } from '../src/levels/level01';
+import { BALANCE } from '../src/config/balance';
+import { NO_INPUT } from '../src/sim/player';
+import { cellToWorld } from '../src/sim/grid';
+import { createWorld, dangerLevel, drainEvents, scoreOf, updateWorld } from '../src/sim/world';
+
+describe('createWorld', () => {
+  it('builds the same arena for the same seed', () => {
+    const a = createWorld(level01, 99);
+    const b = createWorld(level01, 99);
+    expect(Array.from(a.pillars)).toEqual(Array.from(b.pillars));
+    expect(a.pellets).toEqual(b.pellets);
+  });
+
+  it('places pillars apart from each other and clear of both spawns', () => {
+    for (let seed = 1; seed <= 20; seed++) {
+      const w = createWorld(level01, seed);
+      const n = w.grid.size;
+      const cells: Array<[number, number]> = [];
+      for (let i = 0; i < w.pillars.length; i++) if (w.pillars[i]) cells.push([i % n, (i / n) | 0]);
+      expect(cells.length).toBeGreaterThan(0);
+      expect(cells.length).toBeLessThanOrEqual(level01.pillarCount);
+      for (const [x, z] of cells) {
+        expect(x >= 2 && z >= 2 && x < n - 2 && z < n - 2).toBe(true);
+        expect(z <= level01.snake.spawn.z + 3 && x <= level01.snake.spawn.x + 4).toBe(false);
+        expect(Math.abs(x - n / 2) <= 2 && Math.abs(z - n / 2) <= 2).toBe(false);
+        for (const [ox, oz] of cells) if (ox !== x || oz !== z) expect(Math.abs(ox - x) > 1 || Math.abs(oz - z) > 1).toBe(true);
+      }
+    }
+  });
+
+  it('spawns pellets away from the player, the snake and pillars', () => {
+    const w = createWorld(level01, 3);
+    expect(w.pellets).toHaveLength(level01.pelletCount);
+    for (const p of w.pellets) {
+      expect(w.pillars[p.z * w.grid.size + p.x]).toBe(0);
+      expect(Math.hypot(cellToWorld(w.grid, p.x) - w.player.x, cellToWorld(w.grid, p.z) - w.player.z)).toBeGreaterThanOrEqual(BALANCE.pellets.minSpawnDistance);
+    }
+  });
+
+  it('faces the player toward the snake', () => {
+    const w = createWorld(level01, 3);
+    const head = w.snake.pos[0];
+    const fx = -Math.sin(w.player.yaw);
+    const fz = -Math.cos(w.player.yaw);
+    const dx = head.x - w.player.x;
+    const dz = head.z - w.player.z;
+    const cos = (fx * dx + fz * dz) / Math.hypot(dx, dz);
+    expect(cos).toBeGreaterThan(0.99);
+  });
+});
+
+describe('updateWorld', () => {
+  it('kills the player when the snake head reaches them', () => {
+    const w = createWorld(level01, 4);
+    const head = w.snake.pos[0];
+    w.player.x = head.x;
+    w.player.z = head.z;
+    updateWorld(w, NO_INPUT, 0.016);
+    expect(w.status).toBe('dead');
+    expect(w.deathCause).toBe('caught');
+    expect(drainEvents(w).some((e) => e.type === 'died')).toBe(true);
+  });
+
+  it('does not kill an invulnerable player', () => {
+    const w = createWorld(level01, 4);
+    w.invulnerable = true;
+    const head = w.snake.pos[0];
+    w.player.x = head.x;
+    w.player.z = head.z;
+    updateWorld(w, NO_INPUT, 0.016);
+    expect(w.status).toBe('playing');
+  });
+
+  it('collects a pellet the player walks onto, scores it, and replaces it', () => {
+    const w = createWorld(level01, 6);
+    w.invulnerable = true;
+    const p = w.pellets[0];
+    w.player.x = cellToWorld(w.grid, p.x);
+    w.player.z = cellToWorld(w.grid, p.z);
+    updateWorld(w, NO_INPUT, 0.016);
+    expect(w.pelletsCollected).toBe(1);
+    expect(w.pellets).toHaveLength(level01.pelletCount);
+    expect(scoreOf(w)).toBeGreaterThanOrEqual(BALANCE.pellets.points);
+  });
+
+  it('speeds the snake up over time, down to the minimum interval', () => {
+    const w = createWorld(level01, 8);
+    w.invulnerable = true;
+    updateWorld(w, NO_INPUT, 0.016);
+    const early = w.snake.interval;
+    w.elapsed = 1000;
+    updateWorld(w, NO_INPUT, 0.016);
+    expect(w.snake.interval).toBeLessThan(early);
+    expect(w.snake.interval).toBe(level01.snake.minInterval);
+  });
+
+  it('adds a segment every growEverySeconds', () => {
+    const w = createWorld(level01, 8);
+    w.invulnerable = true;
+    // Park the player far away so nothing else interferes, then run 8 seconds.
+    for (let t = 0; t < 8; t += 0.05) updateWorld(w, NO_INPUT, 0.05);
+    expect(w.snake.cells.length + w.snake.pendingGrow).toBeGreaterThanOrEqual(level01.snake.startLength + 1);
+  });
+});
+
+describe('dangerLevel', () => {
+  it('is 1 when touching and 0 when far', () => {
+    expect(dangerLevel(0)).toBe(1);
+    expect(dangerLevel(50)).toBe(0);
+  });
+});
