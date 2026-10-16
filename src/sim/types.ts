@@ -18,6 +18,9 @@ export interface Vec2 {
 export interface PlayerState {
   x: number;
   z: number;
+  /** Height of the feet above the floor, and vertical speed. 0 and 0 when standing. */
+  y: number;
+  vy: number;
   /** Radians. Forward is -z at yaw 0. */
   yaw: number;
   pitch: number;
@@ -36,6 +39,8 @@ export interface PlayerInput {
   /** Positive is right. */
   strafe: number;
   sprint: boolean;
+  /** Jump was pressed this frame (an edge, not a held key). */
+  jump: boolean;
   /** Key turning: positive turns left. */
   turn: number;
   /** Radians added to yaw this frame (mouse or touch look). */
@@ -74,14 +79,17 @@ export type SimEvent =
   | { type: 'pelletCollected' }
   | { type: 'snakeAtePellet' }
   | { type: 'snakeStep'; step: number; distance: number }
-  | { type: 'died'; cause: DeathCause };
+  | { type: 'died'; cause: DeathCause }
+  | { type: 'lifeLost'; cause: DeathCause; livesLeft: number }
+  | { type: 'levelComplete' }
+  | { type: 'jumped' };
 
 export interface World {
   level: LevelConfig;
   grid: Grid;
   rng: Rng;
   pathfinder: Pathfinder;
-  /** 1 where a pillar stands, indexed z * size + x. */
+  /** 1 where a pillar or landmark stands (anything solid), indexed z * size + x. */
   pillars: Uint8Array;
   player: PlayerState;
   snake: SnakeState;
@@ -90,7 +98,11 @@ export interface World {
   pelletRespawn: number;
   elapsed: number;
   pelletsCollected: number;
-  status: 'playing' | 'dead';
+  /** Lives left in this level, including the one being played. */
+  lives: number;
+  /** Seconds of post-respawn safety left. */
+  graceTimer: number;
+  status: 'playing' | 'dead' | 'complete';
   deathCause: DeathCause | null;
   /** Debug: when true the player cannot die. */
   invulnerable: boolean;

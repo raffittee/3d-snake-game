@@ -8,7 +8,8 @@ import { defineConfig } from '@playwright/test';
  */
 export default defineConfig({
   testDir: 'e2e',
-  timeout: 60_000,
+  // Software WebGL renders the textured arena at a few fps, so tests take 25 to 40 s each.
+  timeout: 120_000,
   retries: 0,
   reporter: 'list',
   use: {

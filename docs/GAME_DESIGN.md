@@ -17,7 +17,8 @@ Snake Hunt is a first-person 3D reversal of Snake: you are the food, and a growi
 | Defeating the snake | Differs per level. Each level's goal and snake rule show in a corner guide, with no long tutorials. Only Levels 8 and 10 can be won by beating the snake |
 | Mid-body machete cut | Splits the snake into two snakes |
 | Single player progression | Every run starts fresh at Level 1; perks and items reset |
-| Look | Modernized terrains that keep a hint of the classic Nokia look |
+| Look | Grounded realistic 3D: real lighting and materials, a smooth scaled snake, a modern HUD. The Nokia look is dropped (ADR 0002) |
+| Cut gore | Some blood: a red flesh cross-section on cut ends, a short spray, the severed piece twitches before it withers |
 | Multiplayer | Friends-only room codes, desktop first; phones later |
 | Final level | Dark cave |
 | Dropped ideas | Rice terraces terrain, thorn trap item |
@@ -30,12 +31,13 @@ Snake Hunt is a first-person 3D reversal of Snake: you are the food, and a growi
 
 
 ## Look and feel
-Terrains get a modern renderer (real lighting, fog, soft shadows, particles, weather) but keep four Nokia traits so the game still reads as Snake Hunt:
-- **A limited palette per terrain:** 4 to 5 tones, the way the original LCD had 2.
-- **Dark outlines** on every block and snake segment, as in the prototype.
-- **A blocky snake:** square segments on a visible grid, never a smooth realistic snake.
-- **A Nokia HUD:** LCD-green plates, pixel fonts (Silkscreen, VT323) and the top-down minimap, the same on every terrain.
-A **Classic LCD** toggle in settings renders any terrain in the original two-tone green.
+Grounded realistic 3D, never blocky or toy-like (see [ADR 0002](decisions/0002-grounded-realistic-look.md)). The snake has to look like a real body, so cutting it feels good.
+- **Real light and materials:** soft shadows, fog, an HDRI sky, PBR textures (ground, stone, rock), particles and weather per terrain. Full-resolution rendering, no pixelation or outlines.
+- **A limited palette per terrain:** 4 to 5 tones per terrain as a mood guide, so each terrain reads at a glance.
+- **A smooth, scaled snake:** one continuous body that slithers, with scales, a pale belly, a darker back pattern and a sculpted head (jaws, slit pupils, forked tongue). It still moves cell by cell and its collision is still one box per segment; the body is drawn inside those boxes.
+- **Cuts show some blood:** a cut end shows a red flesh cross-section, a short spray plays, and the severed piece twitches before it withers. No lingering gore.
+- **A clean modern HUD:** translucent dark panels, a modern font and the top-down minimap, the same on every terrain.
+- **Red means danger:** the danger vignette, the snake's head on the minimap, the tired stamina bar, and blood.
 | Terrain | Palette direction |
 |---|---|
 | Plains | Spring green, pale sky, soft yellow |
@@ -113,6 +115,7 @@ The snake's length is its HP, and it gets smarter, not just faster, as the level
 - **Stun:** a slingshot hit freezes the head. The body still blocks you.
 - **Tail cut:** removes segments from the end.
 - **Mid-body cut:** the back half grows a head and becomes a second snake with its own AI. A piece shorter than 4 segments withers away instead.
+- **How a cut looks:** both cut ends show a red flesh cross-section, a short blood spray plays, and a severed piece twitches before it withers.
 - **Growth split (Level 3):** past a set length the snake splits by itself. Its body flashes for 2 s first, so the split reads as an event.
 - **Defeat:** under 3 segments it is defeated, but only on levels that allow it. Elsewhere it has a floor (for example 5 segments), and at the floor the machete bounces off.
 
@@ -247,6 +250,6 @@ Single player ships in three phases, then multiplayer. Each phase ends at a gate
 |---|---|---|
 | 1. Foundation (start here) | Vite project, ES modules, current three.js; game rules on fixed ticks, apart from rendering; levels as config files; 48x48 map; jumping; corner guide; Level 1 (Plains) rebuilt on the new base | Level 1 plays end to end with its goal and corner guide |
 | 2. Core loop | Inventory with spoil rings; slingshot, machete, swim ring; item tiers; length as HP, tail cuts, mid-body splits; XP and perk picks; Levels 2 (Ruins) and 3 (Riverside) | A run through Levels 1 to 3 feels fair in playtests |
-| 3. Campaign | Terrains for Levels 4 to 10, terrain palettes and the Classic LCD toggle; Stalk, Flank, Burrow, Ambush and Coil behaviors; the remaining items; Levels 4 to 10, ending with the Mother Snake | A full 10-level run can be beaten and the boss feels fair |
+| 3. Campaign | Terrains for Levels 4 to 10 and their palettes; Stalk, Flank, Burrow, Ambush and Coil behaviors; the remaining items; Levels 4 to 10, ending with the Mother Snake | A full 10-level run can be beaten and the boss feels fair |
 | 4. Multiplayer | Game server with private rooms, 6-character codes and voice chat; Classic first, then Snake and Players, Infection, Hot Egg and Escape Race; deployed as a static client plus a small always-on server | 4 friends finish a Classic match with no desync |
 | Later: Phones | Touch controls and a phone layout | n/a |

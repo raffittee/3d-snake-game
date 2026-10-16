@@ -3,6 +3,7 @@ import { level01 } from '../src/levels/level01';
 import { BALANCE } from '../src/config/balance';
 import { NO_INPUT } from '../src/sim/player';
 import { cellToWorld } from '../src/sim/grid';
+import { landmarkCells } from '../src/sim/pillars';
 import { createWorld, dangerLevel, drainEvents, scoreOf, updateWorld } from '../src/sim/world';
 
 describe('createWorld', () => {
@@ -17,14 +18,16 @@ describe('createWorld', () => {
     for (let seed = 1; seed <= 20; seed++) {
       const w = createWorld(level01, seed);
       const n = w.grid.size;
+      // Random pillars only; landmark footprints have their own tests (landmarks.test.ts).
+      const landmark = new Set(level01.landmarks.flatMap(landmarkCells).map((c) => c.z * n + c.x));
       const cells: Array<[number, number]> = [];
-      for (let i = 0; i < w.pillars.length; i++) if (w.pillars[i]) cells.push([i % n, (i / n) | 0]);
+      for (let i = 0; i < w.pillars.length; i++) if (w.pillars[i] && !landmark.has(i)) cells.push([i % n, (i / n) | 0]);
       expect(cells.length).toBeGreaterThan(0);
       expect(cells.length).toBeLessThanOrEqual(level01.pillarCount);
       for (const [x, z] of cells) {
         expect(x >= 2 && z >= 2 && x < n - 2 && z < n - 2).toBe(true);
         expect(z <= level01.snake.spawn.z + 3 && x <= level01.snake.spawn.x + 4).toBe(false);
-        expect(Math.abs(x - n / 2) <= 2 && Math.abs(z - n / 2) <= 2).toBe(false);
+        expect(Math.abs(x - level01.start.x) <= 2 && Math.abs(z - level01.start.z) <= 2).toBe(false);
         for (const [ox, oz] of cells) if (ox !== x || oz !== z) expect(Math.abs(ox - x) > 1 || Math.abs(oz - z) > 1).toBe(true);
       }
     }
@@ -52,8 +55,9 @@ describe('createWorld', () => {
 });
 
 describe('updateWorld', () => {
-  it('kills the player when the snake head reaches them', () => {
+  it('kills the player on their last life when the snake head reaches them', () => {
     const w = createWorld(level01, 4);
+    w.lives = 1;
     const head = w.snake.pos[0];
     w.player.x = head.x;
     w.player.z = head.z;
@@ -109,5 +113,17 @@ describe('dangerLevel', () => {
   it('is 1 when touching and 0 when far', () => {
     expect(dangerLevel(0)).toBe(1);
     expect(dangerLevel(50)).toBe(0);
+  });
+});
+
+describe('level 1 layout', () => {
+  it('is a 48x48 arena with the start point inside it', () => {
+    expect(level01.size).toBe(48);
+    const w = createWorld(level01, 1);
+    expect(w.grid.size).toBe(48);
+    expect(level01.start.x).toBeGreaterThan(0);
+    expect(level01.start.x).toBeLessThan(47);
+    expect(level01.start.z).toBeGreaterThan(0);
+    expect(level01.start.z).toBeLessThan(47);
   });
 });

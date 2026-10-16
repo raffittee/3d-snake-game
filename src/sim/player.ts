@@ -2,14 +2,13 @@ import { BALANCE } from '../config/balance';
 import { clamp } from './math';
 import { cellToWorld } from './grid';
 import type { Grid } from './grid';
-import type { PlayerInput, PlayerState, World } from './types';
+import type { Cell, PlayerInput, PlayerState, World } from './types';
 
-export const NO_INPUT: PlayerInput = { forward: 0, strafe: 0, sprint: false, turn: 0, lookYaw: 0, lookPitch: 0 };
+export const NO_INPUT: PlayerInput = { forward: 0, strafe: 0, sprint: false, jump: false, turn: 0, lookYaw: 0, lookPitch: 0 };
 
-/** The player starts at the arena center. The caller turns them to face the snake. */
-export function createPlayer(grid: Grid): PlayerState {
-  const mid = Math.floor(grid.size / 2);
-  return { x: cellToWorld(grid, mid), z: cellToWorld(grid, mid), yaw: 0, pitch: 0, stamina: 1, tired: false, moving: false, sprinting: false };
+/** A fresh player standing on `start`. The caller turns them to face the snake. */
+export function createPlayer(grid: Grid, start: Cell): PlayerState {
+  return { x: cellToWorld(grid, start.x), z: cellToWorld(grid, start.z), y: 0, vy: 0, yaw: 0, pitch: 0, stamina: 1, tired: false, moving: false, sprinting: false };
 }
 
 export function updatePlayer(world: World, input: PlayerInput, dt: number): void {
@@ -37,4 +36,20 @@ export function updatePlayer(world: World, input: PlayerInput, dt: number): void
   const cy = Math.cos(p.yaw);
   p.x += (-sy * f + cy * s) * speed * dt;
   p.z += (-cy * f - sy * s) * speed * dt;
+
+  const grounded = p.y <= 0 && p.vy <= 0;
+  if (input.jump && grounded && !p.tired && p.stamina >= cfg.jumpStaminaCost) {
+    p.vy = cfg.jumpSpeed;
+    p.stamina -= cfg.jumpStaminaCost;
+    world.events.push({ type: 'jumped' });
+  }
+  if (p.y > 0 || p.vy > 0) {
+    // Exact for constant gravity, so the apex does not depend on the frame rate.
+    p.y += p.vy * dt - 0.5 * cfg.gravity * dt * dt;
+    p.vy -= cfg.gravity * dt;
+    if (p.y <= 0) {
+      p.y = 0;
+      p.vy = 0;
+    }
+  }
 }

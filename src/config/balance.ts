@@ -19,6 +19,11 @@ export const BALANCE = {
     staminaRegen: 0.2,
     /** After hitting 0 you cannot sprint until stamina passes this. */
     tiredRecoverAt: 0.35,
+    /** Jump: launch speed (units/s) and gravity (units/s^2) give an apex of about 1.2 units. */
+    jumpSpeed: 8.5,
+    gravity: 30,
+    /** Stamina spent per jump, so you cannot hop forever. */
+    jumpStaminaCost: 0.12,
     /** Q/E turn speed in radians per second. */
     keyTurnRate: 2.4,
     maxPitch: 1.35,
@@ -41,6 +46,13 @@ export const BALANCE = {
     bodyHalfWidth: 0.85,
     /** Half-width of the head's collision box. */
     headHalfWidth: 0.98,
+    /** Height of the head; nothing can jump it. */
+    headHeight: 2.3,
+    /** Height of a body segment: taller than your eyes (1.6), so the body is a wall you cannot see over. */
+    bodyHeight: 2.2,
+    /** The last N segments are low enough to jump over (the rest stand `bodyHeight` tall). */
+    jumpableTail: 4,
+    tailHeight: 0.7,
     /** The last N segments shrink toward the tail. */
     taperSegments: 5,
     taperMinScale: 0.6,
@@ -58,6 +70,13 @@ export const BALANCE = {
     respawnAfterSnakeEats: 3,
     /** Delay between respawn attempts while below `count`. */
     respawnRetry: 2.5,
+  },
+
+  lives: {
+    /** Lives per level. They refill when a new level starts. */
+    perLevel: 3,
+    /** Seconds after a respawn during which the snake cannot catch or crush you. */
+    respawnGrace: 2,
   },
 
   score: {

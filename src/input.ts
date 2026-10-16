@@ -19,8 +19,14 @@ export class Input {
   private lockedOnce = false;
   private lookYaw = 0;
   private lookPitch = 0;
+  /** Set on a Space press, cleared when sampled, so holding Space jumps once. */
+  private jumpQueued = false;
+  /** Largest single mouse delta in pixels since the last `takePeakDelta()`. Debug panel only. */
+  private peakDelta = 0;
   /** Only the game layer knows when input should be acted on. */
   active = false;
+  /** Multiplier on look speed, from settings. */
+  sensitivity = 1;
   readonly touch = isTouchDevice();
 
   private readonly stick: HTMLElement;
@@ -47,12 +53,24 @@ export class Input {
     this.joy = { id: -1, sx: 0, sy: 0, x: 0, y: 0 };
     this.look.id = -1;
     this.lookYaw = this.lookPitch = 0;
+    this.jumpQueued = false;
     this.stick.hidden = true;
     this.dragging = false;
   }
 
   requestLock(): void {
     if (this.touch || !this.view.requestPointerLock) return;
+    try {
+      // Raw movement skips OS pointer acceleration, which inflates fast swipes. Not every browser/OS
+      // supports it, so fall back to the plain lock.
+      const raw = this.view.requestPointerLock({ unadjustedMovement: true }) as unknown as Promise<void> | undefined;
+      if (raw && typeof raw.catch === 'function') raw.catch(() => this.requestPlainLock());
+    } catch {
+      this.requestPlainLock();
+    }
+  }
+
+  private requestPlainLock(): void {
     try {
       const p = this.view.requestPointerLock() as unknown as Promise<void> | undefined;
       if (p && typeof p.catch === 'function') p.catch(() => undefined);
@@ -82,23 +100,33 @@ export class Input {
       forward,
       strafe,
       sprint: k.has('ShiftLeft') || k.has('ShiftRight') || this.sprintTouch,
+      jump: this.jumpQueued,
       turn: (k.has('KeyQ') ? 1 : 0) - (k.has('KeyE') ? 1 : 0),
       lookYaw: this.lookYaw,
       lookPitch: this.lookPitch,
     };
     this.lookYaw = this.lookPitch = 0;
+    this.jumpQueued = false;
     return input;
   }
 
+  /** Read and clear the largest single mouse delta seen. */
+  takePeakDelta(): number {
+    const p = this.peakDelta;
+    this.peakDelta = 0;
+    return p;
+  }
+
   private addLook(dx: number, dy: number): void {
-    this.lookYaw -= dx;
-    this.lookPitch -= dy;
+    this.lookYaw -= dx * this.sensitivity;
+    this.lookPitch -= dy * this.sensitivity;
   }
 
   private bindKeyboard(): void {
     window.addEventListener('keydown', (e) => {
       this.keys.add(e.code);
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
+      if (e.code === 'Space' && !e.repeat && this.active) this.jumpQueued = true;
       if (e.code === 'KeyM') this.handlers.onMute();
       if ((e.code === 'Escape' || e.code === 'KeyP') && this.active && !this.hasLock) this.handlers.onPause();
       if (e.code === 'Enter') this.handlers.onEnter();
@@ -114,7 +142,10 @@ export class Input {
     const sens = 0.0022;
     document.addEventListener('mousemove', (e) => {
       if (!this.active) return;
-      if (this.hasLock || this.dragging) this.addLook(e.movementX * sens, e.movementY * sens);
+      if (this.hasLock || this.dragging) {
+        this.peakDelta = Math.max(this.peakDelta, Math.abs(e.movementX), Math.abs(e.movementY));
+        this.addLook(e.movementX * sens, e.movementY * sens);
+      }
     });
     this.view.addEventListener('mousedown', () => {
       if (!this.active || this.touch) return;

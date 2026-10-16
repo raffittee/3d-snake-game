@@ -1,24 +1,42 @@
 import { BALANCE } from '../config/balance';
 import type { LevelConfig } from './types';
 
-/** The prototype arena as a level: plains, endless survival. */
+/**
+ * Plains: survive 90 s or collect 10 pellets on a 48x48 arena.
+ * Numbers that differ from BALANCE are tuned for the bigger map (more room to run, so the snake
+ * starts a little faster and there are more pellets and pillars). They are first guesses: playtest.
+ */
 export const level01: LevelConfig = {
   id: 'level-01',
   name: 'Classic',
   terrain: 'plains',
-  size: 28,
-  pillarCount: 16,
+  size: 48,
+  // About the same pillar density as the 28x28 prototype (16 pillars).
+  pillarCount: 44,
+  start: { x: 24, z: 24 },
+  // Opposite corners, so one of them is usually in view.
+  landmarks: [
+    { kind: 'tower', cell: { x: 38, z: 9 }, size: 3 },
+    { kind: 'tree', cell: { x: 9, z: 38 }, size: 1 },
+  ],
   snake: {
     behavior: 'chase',
     startLength: BALANCE.snake.startLength,
     spawn: { x: 6, z: 3 },
-    baseInterval: BALANCE.snake.baseInterval,
+    baseInterval: 0.4,
     minInterval: BALANCE.snake.minInterval,
-    rampPerSecond: BALANCE.snake.rampPerSecond,
+    // Reaches about the same speed at 90 s as the prototype did (0.23 s per step).
+    rampPerSecond: 0.0019,
     growEverySeconds: BALANCE.snake.growEverySeconds,
     maxLength: BALANCE.snake.maxLength,
   },
-  pelletCount: BALANCE.pellets.count,
-  goal: { kind: 'endless' },
-  guide: 'Run. Grab pellets.',
+  pelletCount: 5,
+  goal: {
+    kind: 'either',
+    goals: [
+      { kind: 'survive', seconds: 90 },
+      { kind: 'collect', pellets: 10 },
+    ],
+  },
+  guide: { goal: 'Survive 90 s or grab 10 pellets.', rule: "Can't be defeated" },
 };

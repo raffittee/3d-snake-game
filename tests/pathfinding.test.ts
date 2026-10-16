@@ -62,3 +62,16 @@ describe('Pathfinder.roomFrom', () => {
     expect(pf.roomFrom(0, 0)).toBe(4);
   });
 });
+
+describe('Pathfinder cost on big maps', () => {
+  it('a corner-to-corner search on 64x64 stays far below one frame', () => {
+    // Snake steps happen a few times a second; one search must be cheap even on the biggest
+    // single-player map. The bound is loose so slow CI machines do not flake.
+    const pf = new Pathfinder(64, createRng(2));
+    const runs = 500;
+    const t0 = performance.now();
+    for (let i = 0; i < runs; i++) pf.firstStep(0, 0, 63, 63);
+    const perSearchMs = (performance.now() - t0) / runs;
+    expect(perSearchMs).toBeLessThan(2);
+  });
+});

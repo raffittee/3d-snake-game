@@ -1,16 +1,30 @@
 /** Tiny square-wave beeps, phone style. No audio files. */
 export class Audio8 {
   private ctx: AudioContext | null = null;
+  private master: GainNode | null = null;
+  private volume = 1;
   muted = false;
+
+  /** Master volume, 0..1. */
+  setVolume(v: number): void {
+    this.volume = v;
+    if (this.master) this.master.gain.value = v;
+  }
 
   /** Browsers only allow audio after a user gesture, so call this from a click or key press. */
   unlock(): void {
     if (!this.ctx) {
       try {
         const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-        if (Ctor) this.ctx = new Ctor();
+        if (Ctor) {
+          this.ctx = new Ctor();
+          this.master = this.ctx.createGain();
+          this.master.gain.value = this.volume;
+          this.master.connect(this.ctx.destination);
+        }
       } catch {
         this.ctx = null;
+        this.master = null;
       }
     }
     if (this.ctx && this.ctx.state === 'suspended') void this.ctx.resume();
@@ -22,7 +36,7 @@ export class Audio8 {
 
   private tone(freq: number, dur: number, vol: number, type: OscillatorType = 'square', to?: number): void {
     const ctx = this.ctx;
-    if (!ctx || this.muted) return;
+    if (!ctx || !this.master || this.muted || this.volume <= 0) return;
     const t = ctx.currentTime;
     const o = ctx.createOscillator();
     const g = ctx.createGain();
@@ -31,7 +45,7 @@ export class Audio8 {
     if (to) o.frequency.exponentialRampToValueAtTime(to, t + dur);
     g.gain.setValueAtTime(vol, t);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    o.connect(g).connect(ctx.destination);
+    o.connect(g).connect(this.master);
     o.start(t);
     o.stop(t + dur + 0.02);
   }
@@ -57,6 +71,15 @@ export class Audio8 {
   death(): void {
     this.tone(440, 0.6, 0.11, 'square', 55);
     this.later(180, () => this.tone(110, 0.5, 0.09, 'sawtooth', 40));
+  }
+
+  jump(): void {
+    this.tone(330, 0.09, 0.04, 'square', 520);
+  }
+
+  /** A shorter version of the death sound: you lost a life but the run goes on. */
+  lifeLost(): void {
+    this.tone(440, 0.3, 0.1, 'square', 110);
   }
 
   /** A low thud per snake step. Louder and higher the closer it is. */
