@@ -33,6 +33,12 @@ export function segmentHalfWidth(i: number, length: number): number {
   return bodyHalfWidth * taper;
 }
 
+/** How tall segment `i` of `length` stands. The last `jumpableTail` segments are low enough to jump. */
+export function segmentHeight(i: number, length: number): number {
+  if (i === 0) return BALANCE.snake.headHeight;
+  return i >= length - BALANCE.snake.jumpableTail ? BALANCE.snake.tailHeight : BALANCE.snake.bodyHeight;
+}
+
 /** Fill `snake.pos` by blending each segment between its previous and current cell. */
 export function computeSegmentPositions(snake: SnakeState, grid: World['grid'], t: number): void {
   const length = snake.cells.length;
