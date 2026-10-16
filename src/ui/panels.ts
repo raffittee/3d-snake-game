@@ -2,7 +2,16 @@ import type { DeathCause } from '../sim/types';
 import { $ } from './dom';
 import { formatTime } from './hud';
 
-export type PanelName = 'start' | 'pause' | 'dead' | null;
+export type PanelName = 'start' | 'pause' | 'dead' | 'complete' | 'settings' | null;
+
+export interface CompleteSummary {
+  elapsed: number;
+  score: number;
+  pellets: number;
+  livesLeft: number;
+  isBest: boolean;
+  best: number;
+}
 
 export interface DeathSummary {
   cause: DeathCause;
@@ -17,12 +26,14 @@ export interface DeathSummary {
 /** Title, pause and game-over cards plus the play-only HUD chrome. */
 export class Panels {
   private readonly overlay = $('overlay');
-  private readonly cards: Record<'start' | 'pause' | 'dead', HTMLElement> = {
+  private readonly cards: Record<Exclude<PanelName, null>, HTMLElement> = {
     start: $('panelStart'),
     pause: $('panelPause'),
     dead: $('panelDead'),
+    complete: $('panelComplete'),
+    settings: $('panelSettings'),
   };
-  private readonly focusId = { start: 'startBtn', pause: 'resumeBtn', dead: 'againBtn' } as const;
+  private readonly focusId = { start: 'startBtn', pause: 'resumeBtn', dead: 'againBtn', complete: 'completeAgainBtn', settings: 'settingsBack' } as const;
 
   constructor(private readonly touch: boolean) {
     if (touch) {
@@ -61,6 +72,16 @@ export class Panels {
   setBest(best: number): void {
     $('bestStart').textContent = String(best);
     $('bestDead').textContent = String(best);
+    $('bestComplete').textContent = String(best);
+  }
+
+  showComplete(s: CompleteSummary): void {
+    $('cTime').textContent = formatTime(s.elapsed);
+    $('cScore').textContent = String(s.score);
+    $('cPel').textContent = String(s.pellets);
+    $('cLives').textContent = String(s.livesLeft);
+    $('completeBest').hidden = !s.isBest;
+    this.setBest(s.best);
   }
 
   showDeath(s: DeathSummary): void {

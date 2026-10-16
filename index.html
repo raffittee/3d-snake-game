@@ -4,11 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Snake Hunt</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23c7f0d8'/%3E%3Cpath fill='%2343523d' d='M2 9h8v3H2zM10 6h4v6h-4z'/%3E%3Cpath fill='%238a3324' d='M12 7h1v1h-1z'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%23161b18'/%3E%3Cpath d='M3 11c2-4 6 0 8-4' stroke='%239aa36b' stroke-width='2.4' fill='none' stroke-linecap='round'/%3E%3Ccircle cx='12' cy='6' r='1.2' fill='%23d23b2f'/%3E%3C/svg%3E">
 </head>
 <body>
 <canvas id="view" aria-label="First-person view of the snake arena"></canvas>
-<div id="scan"></div>
 <div id="danger"></div>
 
 <div id="hud" hidden>
@@ -18,9 +17,18 @@
       <div class="readout"><span class="lbl">Score</span><span class="val" id="hScore">0</span></div>
       <div class="readout"><span class="lbl">Snake</span><span class="val" id="hLen">5</span></div>
       <div class="readout"><span class="lbl">Gap</span><span class="val" id="hGap">0m</span></div>
+      <div class="readout" id="livesBox"><span class="lbl">Lives</span><span class="val" id="hLives">3</span></div>
       <button class="mini" id="pauseBtn" aria-label="Pause" hidden>II</button>
     </div>
-    <canvas id="map" width="140" height="140" aria-label="Top-down map"></canvas>
+    <div class="hud-right">
+      <canvas id="map" width="144" height="144" aria-label="Top-down map"></canvas>
+      <div class="guide" id="guide" aria-live="off">
+        <span class="lbl">Goal</span>
+        <span class="g-goal" id="gGoal"></span>
+        <span class="g-progress" id="gProgress"></span>
+        <span class="g-rule" id="gRule"></span>
+      </div>
+    </div>
   </div>
   <div class="hud-bottom"><span class="lbl">Stamina</span><div class="bar" id="stamBar"><i id="stam"></i></div></div>
 </div>
@@ -32,12 +40,11 @@
   <section class="card" id="panelStart">
     <p class="eyebrow">Snake, reversed · first person</p>
     <h1>Snake<br>Hunt</h1>
-    <canvas id="mini" width="140" height="25" aria-hidden="true"></canvas>
-    <p class="lede">You're the food now. The snake grows one block every 4 seconds and keeps getting faster. Its body is a wall. Its head ends the run.</p>
     <dl class="keys" id="keysDesk">
       <div><dt>WASD</dt><dd>Move</dd></div>
       <div><dt>Mouse</dt><dd>Look</dd></div>
       <div><dt>Shift</dt><dd>Sprint</dd></div>
+      <div><dt>Space</dt><dd>Jump</dd></div>
       <div><dt>Esc</dt><dd>Pause</dd></div>
       <div><dt>M</dt><dd>Sound on/off</dd></div>
       <div><dt>Q / E</dt><dd>Turn</dd></div>
@@ -48,9 +55,24 @@
       <div><dt>RUN</dt><dd>Hold to sprint</dd></div>
       <div><dt>II</dt><dd>Pause</dd></div>
     </dl>
-    <p class="tip">Pellets are worth 100 points. If the snake reaches one first, it grows by two.</p>
-    <div class="row"><button class="btn" id="startBtn">Start running</button></div>
+    <div class="row">
+      <button class="btn" id="startBtn">Start running</button>
+      <button class="btn ghost" id="settingsFromStart">Settings</button>
+    </div>
     <p class="best">Best score <span id="bestStart">0</span></p>
+  </section>
+
+  <section class="card" id="panelSettings" hidden>
+    <p class="eyebrow">Options</p>
+    <h2>Settings</h2>
+    <div class="settings">
+      <label class="setting" for="set-sensitivity"><span class="lbl">Mouse sensitivity</span><output id="out-sensitivity"></output><input type="range" id="set-sensitivity"></label>
+      <label class="setting" for="set-volume"><span class="lbl">Volume</span><output id="out-volume"></output><input type="range" id="set-volume"></label>
+      <label class="setting" for="set-fov"><span class="lbl">Field of view</span><output id="out-fov"></output><input type="range" id="set-fov"></label>
+      <label class="setting" for="set-renderScale"><span class="lbl">Render scale</span><output id="out-renderScale"></output><input type="range" id="set-renderScale"></label>
+      <label class="setting" for="set-quality"><span class="lbl">Graphics quality</span><select id="set-quality"><option value="high">High: shadows, sky lighting</option><option value="low">Low: faster</option></select></label>
+    </div>
+    <div class="row"><button class="btn" id="settingsBack">Back</button></div>
   </section>
 
   <section class="card" id="panelPause" hidden>
@@ -60,6 +82,7 @@
     <div class="row">
       <button class="btn" id="resumeBtn">Resume</button>
       <button class="btn ghost" id="restartBtn">Restart</button>
+      <button class="btn ghost" id="settingsFromPause">Settings</button>
     </div>
   </section>
 
@@ -78,6 +101,23 @@
       <button class="btn ghost" id="menuBtn">Menu</button>
     </div>
     <p class="best">Best score <span id="bestDead">0</span></p>
+  </section>
+
+  <section class="card" id="panelComplete" hidden>
+    <p class="eyebrow">Goal reached</p>
+    <h2>Level<br>complete</h2>
+    <dl class="stats">
+      <div><dt>Time</dt><dd id="cTime">0</dd></div>
+      <div><dt>Score</dt><dd id="cScore">0</dd></div>
+      <div><dt>Pellets</dt><dd id="cPel">0</dd></div>
+      <div><dt>Lives left</dt><dd id="cLives">0</dd></div>
+    </dl>
+    <p class="flag" id="completeBest" hidden>New best score</p>
+    <div class="row">
+      <button class="btn" id="completeAgainBtn">Run again</button>
+      <button class="btn ghost" id="completeMenuBtn">Menu</button>
+    </div>
+    <p class="best">Best score <span id="bestComplete">0</span></p>
   </section>
 </div>
 

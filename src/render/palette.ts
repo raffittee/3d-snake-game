@@ -1,23 +1,26 @@
-/** Colors come from the CSS variables in style.css so the 3D scene and the HUD always match. */
+/** Minimap colors come from the CSS variables in style.css, so the HUD is themed in one place. */
 export interface Palette {
-  lcd: string;
-  lcd2: string;
-  mid: string;
-  ink: string;
-  ink2: string;
-  deep: string;
+  ground: string;
+  rock: string;
+  landmark: string;
+  start: string;
+  pellet: string;
+  snake: string;
+  player: string;
+  /** Danger only: the snake's head. */
   alert: string;
 }
 
 export function readPalette(): Palette {
   const css = (name: string): string => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   return {
-    lcd: css('--lcd'),
-    lcd2: css('--lcd-2'),
-    mid: css('--lcd-mid'),
-    ink: css('--ink'),
-    ink2: css('--ink-2'),
-    deep: css('--ink-deep'),
+    ground: css('--map-ground'),
+    rock: css('--map-rock'),
+    landmark: css('--map-landmark'),
+    start: css('--map-start'),
+    pellet: css('--map-pellet'),
+    snake: css('--map-snake'),
+    player: css('--map-player'),
     alert: css('--alert'),
   };
 }

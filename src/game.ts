@@ -8,16 +8,20 @@ import { BALANCE } from './config/balance';
 import { clamp } from './sim/math';
 import { createWorld, dangerLevel, drainEvents, gapToSnake, scoreOf, updateDemo, updateWorld } from './sim/world';
 import type { World } from './sim/types';
-import { loadBest, saveBest } from './storage';
+import type { Quality, Settings } from './settings';
+import { loadBest, loadSettings, saveBest, saveSettings } from './storage';
+import { SettingsForm } from './ui/settings';
 import { $ } from './ui/dom';
 import { Hud } from './ui/hud';
 import { Panels } from './ui/panels';
 
-export type GameState = 'menu' | 'play' | 'paused' | 'dead';
+export type GameState = 'menu' | 'play' | 'paused' | 'dead' | 'complete';
 
 export interface GameOptions {
   seed?: number;
   god: boolean;
+  /** ?quality=low forces low graphics quality whatever the saved setting says (e2e uses it). */
+  forceQuality?: Quality;
 }
 
 const DEATH_DELAY_MS = 1100;
@@ -47,7 +51,8 @@ export class Game {
 
   constructor(private readonly options: GameOptions) {
     const palette = readPalette();
-    this.renderer = new GameRenderer(this.view, palette);
+    const settings = loadSettings();
+    this.renderer = new GameRenderer(this.view, options.forceQuality ?? settings.quality);
     this.hud = new Hud(palette);
     this.input = new Input(this.view, {
       onPause: () => this.pause(),
@@ -69,6 +74,11 @@ export class Game {
       reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
     };
     this.world = this.newWorld();
+    this.applySettings(settings);
+    new SettingsForm(settings, (s) => {
+      this.applySettings(s);
+      saveSettings(s);
+    });
     this.bindUI();
     window.addEventListener('resize', () => this.renderer.resize());
     this.panels.setBest(this.best);
@@ -95,6 +105,20 @@ export class Game {
     this.panels.on('restartBtn', () => this.start());
     this.panels.on('resumeBtn', () => this.resume());
     this.panels.on('menuBtn', () => this.toMenu());
+    this.panels.on('completeAgainBtn', () => this.start());
+    this.panels.on('completeMenuBtn', () => this.toMenu());
+    this.panels.on('settingsFromStart', () => this.panels.show('settings'));
+    this.panels.on('settingsFromPause', () => this.panels.show('settings'));
+    // Back returns to whichever card opened it: the pause card mid-run, otherwise the title card.
+    this.panels.on('settingsBack', () => this.panels.show(this.state === 'paused' ? 'pause' : 'start'));
+  }
+
+  private applySettings(s: Settings): void {
+    this.input.sensitivity = s.sensitivity;
+    this.audio.setVolume(s.volume);
+    this.renderer.setFov(s.fov);
+    this.renderer.setRenderScale(s.renderScale);
+    this.renderer.setQuality(this.options.forceQuality ?? s.quality);
     this.panels.on('pauseBtn', () => this.pause());
   }
 
@@ -146,11 +170,9 @@ export class Game {
     this.hud.clearDanger();
   }
 
-  private die(): void {
-    this.state = 'dead';
+  /** Shared by death and level complete: stop input, free the pointer, record the score. Returns whether it is a new best. */
+  private endRun(): boolean {
     this.input.active = false;
-    this.cam.deathT = 0;
-    this.audio.death();
     this.input.releaseLock();
     this.input.reset();
     this.finalScore = scoreOf(this.world);
@@ -159,6 +181,30 @@ export class Game {
       this.best = this.finalScore;
       saveBest(this.best);
     }
+    return isBest;
+  }
+
+  private complete(): void {
+    this.state = 'complete';
+    this.danger = 0;
+    const isBest = this.endRun();
+    this.panels.showComplete({
+      elapsed: this.world.elapsed,
+      score: this.finalScore,
+      pellets: this.world.pelletsCollected,
+      livesLeft: this.world.lives,
+      isBest,
+      best: this.best,
+    });
+    this.panels.setPlayUI(false);
+    this.panels.show('complete');
+  }
+
+  private die(): void {
+    this.state = 'dead';
+    this.cam.deathT = 0;
+    this.audio.death();
+    const isBest = this.endRun();
     this.panels.showDeath({
       cause: this.world.deathCause ?? 'caught',
       elapsed: this.world.elapsed,
@@ -197,7 +243,6 @@ export class Game {
       this.hud.drawMap(w);
       this.hud.update(w, this.danger, this.state === 'dead', this.finalScore);
     }
-    if (this.panels.startVisible) this.hud.drawMini(dt);
   }
 
   private trackFrame(now: number, rawMs: number): void {
@@ -218,10 +263,11 @@ export class Game {
     if (this.state === 'play') {
       const input = this.input.sample();
       updateWorld(w, input, dt);
-      if (w.player.moving) this.cam.bob += dt * (w.player.sprinting ? 14 : 9);
+      if (w.player.moving && w.player.y === 0) this.cam.bob += dt * (w.player.sprinting ? 14 : 9);
       this.danger = dangerLevel(gapToSnake(w));
       this.handleEvents();
       if (w.status === 'dead') this.die();
+      else if (w.status === 'complete') this.complete();
     } else if (this.state === 'menu') {
       this.cam.menuT += dt;
       this.wanderT -= dt;
@@ -242,6 +288,11 @@ export class Game {
       if (e.type === 'pelletCollected') this.audio.pellet();
       else if (e.type === 'snakeAtePellet') this.audio.gulp();
       else if (e.type === 'snakeStep') this.audio.step(e.distance);
+      else if (e.type === 'jumped') this.audio.jump();
+      else if (e.type === 'lifeLost') {
+        this.audio.lifeLost();
+        this.hud.flashLifeLost();
+      }
     }
   }
 
@@ -252,7 +303,7 @@ export class Game {
     return [
       `state ${this.state}  seed ${this.seed}`,
       `t ${w.elapsed.toFixed(1)}s  score ${scoreOf(w)}`,
-      `snake len ${s.cells.length} (+${s.pendingGrow})  step ${s.interval.toFixed(3)}s`,
+      `snake len ${s.cells.length} (+${s.pendingGrow})  step ${s.interval.toFixed(3)}s  lives ${w.lives}`,
       `player ${w.player.x.toFixed(1)},${w.player.z.toFixed(1)}  stam ${clamp(w.player.stamina, 0, 1).toFixed(2)}`,
       `gap ${gapToSnake(w).toFixed(1)}  sprint ${BALANCE.player.sprintSpeed}`,
       `fps ${this.perf.fps.toFixed(0)}  worst frame ${this.perf.shownWorstMs.toFixed(0)}ms  mouse peak ${this.perf.shownPeakDelta.toFixed(0)}px`,

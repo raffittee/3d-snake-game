@@ -1,4 +1,25 @@
+import { sanitizeSettings } from './settings';
+import type { Settings } from './settings';
+
 const KEY = 'snake-hunt-best';
+const SETTINGS_KEY = 'snake-hunt-settings';
+
+export function loadSettings(): Settings {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    return sanitizeSettings(raw ? JSON.parse(raw) : null);
+  } catch {
+    return sanitizeSettings(null);
+  }
+}
+
+export function saveSettings(settings: Settings): void {
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  } catch {
+    // Storage unavailable: settings just last for this page load.
+  }
+}
 
 /** localStorage can throw (private windows, blocked storage), so every access is guarded. */
 export function loadBest(): number {
