@@ -39,6 +39,8 @@ export class Game {
   private wander = { x: 1, z: 1 };
   private wanderT = 0;
   private last = performance.now();
+  /** Debug-panel frame stats, refreshed once a second. */
+  private perf = { windowStart: performance.now(), frames: 0, worstMs: 0, fps: 0, shownWorstMs: 0, shownPeakDelta: 0 };
   private seedCounter: number;
   /** Frames drawn so far. Tests use it to know the loop is alive. */
   frames = 0;
@@ -179,6 +181,7 @@ export class Game {
   private frame(now: number): void {
     requestAnimationFrame((t) => this.frame(t));
     const dt = Math.min(0.05, (now - this.last) / 1000);
+    this.trackFrame(now, now - this.last);
     this.last = now;
     this.step(dt);
     this.frames++;
@@ -195,6 +198,19 @@ export class Game {
       this.hud.update(w, this.danger, this.state === 'dead', this.finalScore);
     }
     if (this.panels.startVisible) this.hud.drawMini(dt);
+  }
+
+  private trackFrame(now: number, rawMs: number): void {
+    const p = this.perf;
+    p.frames++;
+    p.worstMs = Math.max(p.worstMs, rawMs);
+    if (now - p.windowStart < 1000) return;
+    p.fps = (p.frames * 1000) / (now - p.windowStart);
+    p.shownWorstMs = p.worstMs;
+    p.shownPeakDelta = this.input.takePeakDelta();
+    p.frames = 0;
+    p.worstMs = 0;
+    p.windowStart = now;
   }
 
   private step(dt: number): void {
@@ -239,6 +255,7 @@ export class Game {
       `snake len ${s.cells.length} (+${s.pendingGrow})  step ${s.interval.toFixed(3)}s`,
       `player ${w.player.x.toFixed(1)},${w.player.z.toFixed(1)}  stam ${clamp(w.player.stamina, 0, 1).toFixed(2)}`,
       `gap ${gapToSnake(w).toFixed(1)}  sprint ${BALANCE.player.sprintSpeed}`,
+      `fps ${this.perf.fps.toFixed(0)}  worst frame ${this.perf.shownWorstMs.toFixed(0)}ms  mouse peak ${this.perf.shownPeakDelta.toFixed(0)}px`,
     ].join('\n');
   }
 }

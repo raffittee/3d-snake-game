@@ -19,6 +19,8 @@ export class Input {
   private lockedOnce = false;
   private lookYaw = 0;
   private lookPitch = 0;
+  /** Largest single mouse delta in pixels since the last `takePeakDelta()`. Debug panel only. */
+  private peakDelta = 0;
   /** Only the game layer knows when input should be acted on. */
   active = false;
   readonly touch = isTouchDevice();
@@ -53,6 +55,17 @@ export class Input {
 
   requestLock(): void {
     if (this.touch || !this.view.requestPointerLock) return;
+    try {
+      // Raw movement skips OS pointer acceleration, which inflates fast swipes. Not every browser/OS
+      // supports it, so fall back to the plain lock.
+      const raw = this.view.requestPointerLock({ unadjustedMovement: true }) as unknown as Promise<void> | undefined;
+      if (raw && typeof raw.catch === 'function') raw.catch(() => this.requestPlainLock());
+    } catch {
+      this.requestPlainLock();
+    }
+  }
+
+  private requestPlainLock(): void {
     try {
       const p = this.view.requestPointerLock() as unknown as Promise<void> | undefined;
       if (p && typeof p.catch === 'function') p.catch(() => undefined);
@@ -90,6 +103,13 @@ export class Input {
     return input;
   }
 
+  /** Read and clear the largest single mouse delta seen. */
+  takePeakDelta(): number {
+    const p = this.peakDelta;
+    this.peakDelta = 0;
+    return p;
+  }
+
   private addLook(dx: number, dy: number): void {
     this.lookYaw -= dx;
     this.lookPitch -= dy;
@@ -114,7 +134,10 @@ export class Input {
     const sens = 0.0022;
     document.addEventListener('mousemove', (e) => {
       if (!this.active) return;
-      if (this.hasLock || this.dragging) this.addLook(e.movementX * sens, e.movementY * sens);
+      if (this.hasLock || this.dragging) {
+        this.peakDelta = Math.max(this.peakDelta, Math.abs(e.movementX), Math.abs(e.movementY));
+        this.addLook(e.movementX * sens, e.movementY * sens);
+      }
     });
     this.view.addEventListener('mousedown', () => {
       if (!this.active || this.touch) return;
