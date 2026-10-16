@@ -18,14 +18,22 @@ Ordered by the roadmap in `GAME_DESIGN.md`. Do the phases in order; each phase e
 4. **Lives.** 3 per level, refilled between levels. A death respawns you at the level start point and the snake stays as it was; losing all 3 ends the run. Done when: tested in sim, and the HUD shows lives.
 5. **48x48 map for Levels 1 and 2.** Check BFS cost per step, minimap scale (currently 5 px per cell, 140 px canvas), and re-tune snake speed for the bigger map. Done when: Level 1 runs at 48x48 with the minimap readable.
 6. **Jumping.** Vertical movement in the sim (`y`, gravity, stamina cost per jump). Clears low walls, logs and the snake's last 4 segments; not the rest of the body. Needs collision to become height-aware. Done when: unit tests for clearing a tail segment but not a body segment.
-7. **Level start/respawn point and landmarks** (a tower, big tree etc.) so you can find your way in first person at 48x48.
-8. **Settings menu:** mouse sensitivity, volume, FOV, render scale (all are literals today).
+7. **Grounded realistic look** (ADR 0002). Replaces the Nokia LCD look before landmarks and terrains are built on it. Render only; `src/sim` is untouched.
+   - Renderer: sRGB output and tone mapping (drop `ColorManagement.enabled = false` and the light times pi hack), full resolution with antialiasing, soft shadows, HDRI sky and fog, and a `?quality=low` switch.
+   - Per-terrain look registry keyed by `LevelConfig.terrain`, with `plains` filled in.
+   - Arena: CC0 textures (Poly Haven: `leafy_grass` ground, `castle_wall_slates` walls, `mossy_rock` pillars, `kloofendal_48d_partly_cloudy_puresky` sky) with a credits file. No outlines.
+   - Snake: one smooth tube body along a curve through `snake.pos`, with procedural scales, a slither drawn inside the collision boxes, and support for `head`/`tail`/`cut` ends. A sculpted head with jaws that open on the death camera, and a forked tongue.
+   - Pellets: a glowing gem instead of the outlined octahedron.
+   - HUD and menus: dark translucent panels, a modern bundled font, a restyled minimap, and no pixel mini-snake.
+   - Done when: `npm run check` and `npm run test:e2e` pass, the screenshots show no blocks or outlines, the scales travel with the body, and default quality holds 60 fps on desktop.
+8. **Level start/respawn point and landmarks** (a tower, big tree etc.) so you can find your way in first person at 48x48.
+9. **Settings menu:** mouse sensitivity, volume, FOV, render scale, graphics quality (all are literals or URL switches today).
 
 ## Phase 2: Core loop (gate: a run through Levels 1 to 3 feels fair in playtests)
 
 - Inventory (2 slots) with draining spoil rings; item tiers (white, blue, gold) with rarer drops at higher levels.
 - Items: slingshot (stun 2 s, 3 shots, first drops Level 1), machete (5 cuts), swim ring (30 s in water).
-- Snake as HP: tail cut, mid-body cut that splits it into two snakes (back half grows a head; under 4 segments it withers), growth split at a set length (Level 3) with a 2 s body flash, floor length where the machete bounces, defeat under 3 only where allowed. This needs `world.snake` to become `world.snakes[]` and the pathfinder to avoid other snakes' bodies.
+- Snake as HP: tail cut, mid-body cut that splits it into two snakes (back half grows a head; under 4 segments it withers), growth split at a set length (Level 3) with a 2 s body flash, floor length where the machete bounces, defeat under 3 only where allowed. Cut feel: red flesh cross-section caps on cut ends, a short blood spray, and a severed piece that twitches before it withers. No lingering gore. This needs `world.snake` to become `world.snakes[]` and the pathfinder to avoid other snakes' bodies.
 - XP from pellets, perk pick on level-up (3 offered, pick 1), perks reset each run.
 - Between-level perk pick screen; items clear at level end.
 - Level 2 Ruins (jumpable low walls, crumbling walls the snake smashes, Predict behavior, find 5 relics then reach the gate). Level 3 Riverside (water, bridges, snake swims slower, pellet speed boost that fades after about 8 s, cross to the far dock).
@@ -33,7 +41,7 @@ Ordered by the roadmap in `GAME_DESIGN.md`. Do the phases in order; each phase e
 
 ## Phase 3: Campaign (gate: a full 10-level run can be beaten and the boss feels fair)
 
-- Terrain palettes (4 to 5 tones each), modern lighting/fog/particles while keeping the Nokia traits, and the Classic LCD toggle. Cave last.
+- Terrain looks (4 to 5 tone palette, textures, lighting, fog, particles, weather) in the terrain registry from Phase 1 item 7. Cave last.
 - Levels 4 to 10 per the table in `GAME_DESIGN.md`: Tall grass, Corn maze, Swamp, Sandstorm desert, Frozen lake, Broken house, Dark cave (Mother Snake boss, 3 phases).
 - AI behaviors: stalk, flank (two snakes), burrow, ambush, coil (boss only).
 - Remaining items: firecracker, smoke bomb, energy drink, mongoose, ice cleats, flashlight battery. Remaining perks.
