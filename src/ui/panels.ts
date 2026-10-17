@@ -1,20 +1,32 @@
+import { PERKS } from '../sim/perks';
+import type { PerkId } from '../sim/perks';
 import type { DeathCause } from '../sim/types';
 import { $ } from './dom';
 import { formatTime } from './hud';
 
-export type PanelName = 'start' | 'pause' | 'dead' | 'complete' | 'settings' | null;
+export type PanelName = 'start' | 'pause' | 'dead' | 'complete' | 'settings' | 'perk' | null;
 
 export interface CompleteSummary {
+  levelNumber: number;
+  levelName: string;
   elapsed: number;
+  /** This level's score, and the run's total so far. */
   score: number;
+  runScore: number;
   pellets: number;
   livesLeft: number;
+  /** Level-ups waiting to be spent on perks. */
+  picks: number;
+  /** The last level of the campaign. */
+  last: boolean;
   isBest: boolean;
   best: number;
 }
 
 export interface DeathSummary {
   cause: DeathCause;
+  levelNumber: number;
+  levelName: string;
   elapsed: number;
   score: number;
   length: number;
@@ -32,8 +44,10 @@ export class Panels {
     dead: $('panelDead'),
     complete: $('panelComplete'),
     settings: $('panelSettings'),
+    perk: $('panelPerk'),
   };
-  private readonly focusId = { start: 'startBtn', pause: 'resumeBtn', dead: 'againBtn', complete: 'completeAgainBtn', settings: 'settingsBack' } as const;
+  private readonly focusId = { start: 'startBtn', pause: 'resumeBtn', dead: 'againBtn', complete: 'completeNextBtn', settings: 'settingsBack', perk: 'perkChoices' } as const;
+  private perkHandler: (id: PerkId) => void = () => undefined;
 
   constructor(private readonly touch: boolean) {
     if (touch) {
@@ -76,6 +90,11 @@ export class Panels {
   }
 
   showComplete(s: CompleteSummary): void {
+    $('cEyebrow').textContent = `Level ${s.levelNumber} \u00b7 ${s.levelName}`;
+    $('cTitle').innerHTML = s.last ? 'Campaign<br>complete' : 'Level<br>complete';
+    $('cRun').textContent =
+      `Run score ${s.runScore}.` + (s.picks > 0 ? ` ${s.picks} level-up${s.picks > 1 ? 's' : ''} to spend on perks.` : '') + (s.last ? ' That is every level built so far.' : '');
+    $('completeNextBtn').textContent = s.picks > 0 ? 'Pick perks' : s.last ? 'Finish run' : 'Next level';
     $('cTime').textContent = formatTime(s.elapsed);
     $('cScore').textContent = String(s.score);
     $('cPel').textContent = String(s.pellets);
@@ -85,14 +104,42 @@ export class Panels {
   }
 
   showDeath(s: DeathSummary): void {
-    $('deadCause').textContent = s.cause === 'crushed' ? 'Pinned against a wall' : 'Caught by the head';
-    $('deadTitle').textContent = s.cause === 'crushed' ? 'Crushed' : 'Eaten';
+    $('deadCause').textContent = s.cause === 'crushed' ? 'Pinned against a wall' : s.cause === 'drowned' ? 'The swim ring ran out' : 'Caught by the head';
+    $('deadTitle').textContent = s.cause === 'crushed' ? 'Crushed' : s.cause === 'drowned' ? 'Drowned' : 'Eaten';
+    $('deadReached').textContent = `Out of lives on Level ${s.levelNumber} (${s.levelName}). The run starts over at Level 1.`;
     $('dTime').textContent = formatTime(s.elapsed);
     $('dScore').textContent = String(s.score);
     $('dLen').textContent = String(s.length);
     $('dPel').textContent = String(s.pellets);
     $('newBest').hidden = !s.isBest;
     this.setBest(s.best);
+  }
+
+  /** Three perk cards; `pending` = level-ups left to spend (this one included). */
+  showPerks(offer: PerkId[], owned: PerkId[], pending: number): void {
+    $('perkEyebrow').textContent = pending > 1 ? `Level up \u00b7 ${pending} picks left` : 'Level up';
+    const list = $('perkChoices');
+    list.replaceChildren(
+      ...offer.map((id) => {
+        const b = document.createElement('button');
+        b.className = 'perk';
+        b.type = 'button';
+        b.dataset.perk = id;
+        const name = document.createElement('strong');
+        name.textContent = PERKS[id].name;
+        const text = document.createElement('span');
+        text.textContent = PERKS[id].text;
+        b.append(name, text);
+        b.addEventListener('click', () => this.perkHandler(id));
+        return b;
+      }),
+    );
+    list.tabIndex = -1;
+    $('perkOwned').textContent = owned.length ? `Your perks: ${owned.map((p) => PERKS[p].name).join(', ')}` : 'Perks last for the whole run.';
+  }
+
+  onPerk(fn: (id: PerkId) => void): void {
+    this.perkHandler = fn;
   }
 
   on(id: string, fn: () => void): void {

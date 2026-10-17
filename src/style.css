@@ -72,11 +72,22 @@ body{font:16px/1.4 var(--font);-webkit-font-smoothing:antialiased}
 .hud-bottom{align-self:flex-start;display:flex;flex-direction:column;gap:6px;padding:9px 12px}
 .meter{display:flex;align-items:center;gap:10px}
 .meter .lbl{min-width:52px}
+.bar.xp{height:5px}
+.bar.xp i{background:var(--accent);width:0}
 .bar{width:160px;height:8px;border-radius:4px;background:rgba(255,255,255,.14);overflow:hidden}
 .bar i{display:block;height:100%;width:100%;border-radius:4px;background:var(--text)}
 .bar.tired i{background:var(--alert)}
 #cross{position:fixed;left:50%;top:50%;width:6px;height:6px;margin:-3px 0 0 -3px;pointer-events:none;border-radius:50%;
   background:rgba(255,255,255,.85);box-shadow:0 0 0 1.5px rgba(0,0,0,.45)}
+/* Keen ears: an arrow around the crosshair pointing at the nearest snake. */
+#keenArrow{position:fixed;left:50%;top:50%;width:0;height:0;pointer-events:none}
+#keenArrow::after{content:"";position:absolute;left:-9px;top:-92px;border:9px solid transparent;border-bottom:16px solid var(--alert);opacity:.85}
+/* Perk pick: three cards to choose from. */
+.perks{display:flex;flex-direction:column;gap:10px}
+.perk{display:flex;flex-direction:column;gap:3px;text-align:left;font:inherit;color:var(--text);background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:12px;padding:12px 14px;cursor:pointer}
+.perk:hover{background:rgba(255,255,255,.1);border-color:var(--accent)}
+.perk strong{font-size:16px}
+.perk span{font-size:14px;color:var(--muted)}
 /* Hit marker: the crosshair grows into a ring for a moment when a stone stuns the snake. */
 #cross.hit{animation:hitmark .35s ease-out}
 @keyframes hitmark{0%{transform:scale(3.2);background:transparent;box-shadow:0 0 0 2px var(--accent)}100%{transform:scale(1)}}

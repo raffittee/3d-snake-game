@@ -111,6 +111,30 @@ export const BALANCE = {
     },
   },
 
+  xp: {
+    /** XP per pellet you collect. */
+    perPellet: 1,
+    /** XP for the first level-up, then this much more for each one after. */
+    firstLevelUp: 3,
+    stepPerLevel: 2,
+    /** Perks offered per level-up (pick 1). */
+    perksOffered: 3,
+  },
+
+  perks: {
+    /** Big lungs: 30% more stamina. */
+    bigLungs: 1.3,
+    /** Preserver: items spoil at this rate. */
+    preserverSpoilRate: 0.5,
+    /** Spring legs: launch speed multiplier (the apex goes from ~1.2 to ~1.4). */
+    springLegsJump: 1.08,
+    /** Second wind: how far a catch knocks you back, and the grace after. */
+    secondWindKnockback: 5,
+    secondWindGrace: 1.5,
+    /** Keen ears: the arrow shows when the nearest snake head is within this gap. */
+    keenEarsRange: 16,
+  },
+
   lives: {
     /** Lives per level. They refill when a new level starts. */
     perLevel: 3,

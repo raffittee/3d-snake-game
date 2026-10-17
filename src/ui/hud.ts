@@ -12,6 +12,18 @@ export function formatTime(s: number): string {
   return `${String(m).padStart(2, '0')}:${r.toFixed(1).padStart(4, '0')}`;
 }
 
+/** What the HUD shows about the run (the game layer works it out). */
+export interface HudRun {
+  levelNumber: number;
+  levelName: string;
+  xpLevel: number;
+  /** 0..1 toward the next level-up. */
+  xpFraction: number;
+  /** Keen ears: show the arrow, and the snake's bearing relative to where you look (radians, 0 = ahead). */
+  keenEars: boolean;
+  snakeBearing: number;
+}
+
 const FLASH_MS = 600;
 /** The spoil ring blinks for the last few seconds of an item's life. */
 const SPOIL_WARN_SECONDS = 5;
@@ -35,6 +47,10 @@ export class Hud {
   private readonly bar = $('stamBar');
   private readonly dangerEl = $('danger');
   private readonly cross = $('cross');
+  private readonly levelLabel = $('gLevel');
+  private readonly xpLabel = $('xpLabel');
+  private readonly xpFill = $('xpFill');
+  private readonly keenArrow = $('keenArrow');
   private readonly mapCtx: CanvasRenderingContext2D;
   private readonly slots: Array<{ el: HTMLElement; icon: HTMLElement; uses: HTMLElement; shown: string }> = [];
 
@@ -70,6 +86,11 @@ export class Hud {
   }
 
   update(world: World, danger: number, dead: boolean, finalScore: number, run: HudRun): void {
+    this.levelLabel.textContent = `Level ${run.levelNumber} \u00b7 ${run.levelName}`;
+    this.xpLabel.textContent = `XP \u00b7 ${run.xpLevel}`;
+    this.xpFill.style.width = `${(Math.min(1, run.xpFraction) * 100).toFixed(1)}%`;
+    this.keenArrow.hidden = !run.keenEars || dead;
+    if (run.keenEars) this.keenArrow.style.transform = `rotate(${(-run.snakeBearing).toFixed(3)}rad)`;
     this.time.textContent = formatTime(world.elapsed);
     this.score.textContent = String(dead ? finalScore : scoreOf(world));
     // The longest snake, and how many there are once a cut has split it.

@@ -14,15 +14,18 @@ declare global {
  *   ?seed=N   same arena every run
  *   ?god=1    the snake cannot kill you
  *   ?quality=low  force low graphics quality (no shadows or sky lighting)
+ *   ?level=N  start runs on level N (1-based)
  */
 const params = new URLSearchParams(location.search);
 const seedParam = params.get('seed');
 const debug = params.get('debug') === '1';
 const god = params.get('god') === '1';
+const levelParam = Number(params.get('level'));
+const startLevel = Number.isInteger(levelParam) && levelParam > 0 ? levelParam : undefined;
 const forceQuality = params.get('quality') === 'low' ? 'low' : params.get('quality') === 'high' ? 'high' : undefined;
 
 function boot(): void {
-  const game = new Game({ seed: seedParam !== null && seedParam !== '' ? Number(seedParam) : undefined, god, forceQuality });
+  const game = new Game({ seed: seedParam !== null && seedParam !== '' ? Number(seedParam) : undefined, god, forceQuality, startLevel });
   if (debug || god) window.__snake = game;
   if (debug) {
     const panel = document.createElement('pre');

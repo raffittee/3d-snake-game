@@ -1,5 +1,6 @@
 import { BALANCE } from '../config/balance';
 import { clamp } from './math';
+import { jumpSpeed, staminaDrainScale } from './perks';
 import { cellToWorld } from './grid';
 import type { Grid } from './grid';
 import type { Cell, PlayerInput, PlayerState, World } from './types';
@@ -27,7 +28,7 @@ export function updatePlayer(world: World, input: PlayerInput, dt: number): void
   p.moving = len > cfg.moveDeadzone;
   const sprint = input.sprint && p.moving && !p.tired && p.stamina > 0;
   p.sprinting = sprint;
-  p.stamina = clamp(p.stamina + (sprint ? -cfg.staminaDrain : cfg.staminaRegen) * dt, 0, 1);
+  p.stamina = clamp(p.stamina + (sprint ? -cfg.staminaDrain * staminaDrainScale(world) : cfg.staminaRegen) * dt, 0, 1);
   if (p.stamina <= 0) p.tired = true;
   if (p.tired && p.stamina > cfg.tiredRecoverAt) p.tired = false;
 
@@ -38,8 +39,8 @@ export function updatePlayer(world: World, input: PlayerInput, dt: number): void
   p.z += (-cy * f - sy * s) * speed * dt;
 
   const grounded = p.y <= 0 && p.vy <= 0;
-  if (input.jump && grounded && !p.tired && p.stamina >= cfg.jumpStaminaCost) {
-    p.vy = cfg.jumpSpeed;
+  if (input.jump && grounded && !p.swimming && !p.tired && p.stamina >= cfg.jumpStaminaCost) {
+    p.vy = jumpSpeed(world);
     p.stamina -= cfg.jumpStaminaCost;
     world.events.push({ type: 'jumped' });
   }

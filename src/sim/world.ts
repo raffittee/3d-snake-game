@@ -5,6 +5,8 @@ import { overlapDepth, pushOut } from './collision';
 import { cellToWorld, inBounds, makeGrid, worldToCell } from './grid';
 import { goalMet } from './goals';
 import { createInventory, updateItems } from './items';
+import { hasPerk, inventorySlots, jumpableTail } from './perks';
+import type { PerkId } from './perks';
 import { updateProjectiles } from './projectiles';
 import { generatePillars } from './pillars';
 import { Pathfinder } from './pathfinding';
@@ -16,7 +18,7 @@ import { advanceSnake, createSnake, hasTail, segmentHalfWidth, segmentHeight } f
 import type { DeathCause, PlayerInput, SimEvent, SnakeState, World } from './types';
 
 /** Build a fresh game for `level`. The same level and seed always give the same arena. */
-export function createWorld(level: LevelConfig, seed: number): World {
+export function createWorld(level: LevelConfig, seed: number, perks: PerkId[] = []): World {
   const grid = makeGrid(level.size, BALANCE.cellSize);
   const rng = createRng(seed);
   const world = {
@@ -31,6 +33,9 @@ export function createWorld(level: LevelConfig, seed: number): World {
     pelletRespawn: 0,
     elapsed: 0,
     pelletsCollected: 0,
+    perks: [...perks],
+    xpGained: 0,
+    secondWindUsed: false,
     inventory: createInventory(inventorySlots(perks)),
     selectedSlot: 0,
     drops: [],
@@ -103,6 +108,21 @@ function faceSnake(world: World): void {
 /** Lose a life. With lives left, respawn at the start point and leave the snakes as they are. */
 function kill(world: World, cause: DeathCause, by: SnakeState | null): void {
   if (world.invulnerable || world.graceTimer > 0) return;
+  if (by && hasPerk(world, 'secondWind') && !world.secondWindUsed) {
+    // Knocked back instead: thrown away from the snake's head, a moment of grace, no life lost.
+    world.secondWindUsed = true;
+    const head = by.pos[0];
+    const dx = world.player.x - head.x;
+    const dz = world.player.z - head.z;
+    const d = Math.hypot(dx, dz) || 1;
+    const kb = BALANCE.perks.secondWindKnockback;
+    const lim = world.grid.half - BALANCE.player.radius;
+    world.player.x = Math.min(lim, Math.max(-lim, world.player.x + (dx / d) * kb));
+    world.player.z = Math.min(lim, Math.max(-lim, world.player.z + (dz / d) * kb));
+    world.graceTimer = BALANCE.perks.secondWindGrace;
+    world.events.push({ type: 'secondWind' });
+    return;
+  }
   world.killerId = by ? by.id : null;
   world.lives = Math.max(0, world.lives - 1);
   if (world.lives > 0) {
@@ -191,6 +211,7 @@ export function updateWorld(world: World, input: PlayerInput, dt: number): void 
     if (Math.hypot(cellToWorld(world.grid, p.x) - world.player.x, cellToWorld(world.grid, p.z) - world.player.z) < pickup) {
       world.pellets.splice(i, 1);
       world.pelletsCollected++;
+      world.xpGained += BALANCE.xp.perPellet;
       world.events.push({ type: 'pelletCollected' });
       spawnPellet(world);
     }

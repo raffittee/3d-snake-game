@@ -1,4 +1,5 @@
 import type { LevelConfig } from '../levels/types';
+import type { PerkId } from './perks';
 import type { Grid } from './grid';
 import type { Pathfinder } from './pathfinding';
 import type { Rng } from './rng';
@@ -155,6 +156,7 @@ export type SimEvent =
   | { type: 'snakeStep'; step: number; distance: number }
   | { type: 'died'; cause: DeathCause }
   | { type: 'lifeLost'; cause: DeathCause; livesLeft: number }
+  | { type: 'secondWind' }
   | { type: 'levelComplete' }
   | { type: 'jumped' }
   | { type: 'itemSpawned'; item: ItemId; tier: Tier }
@@ -189,6 +191,12 @@ export interface World {
   pelletRespawn: number;
   elapsed: number;
   pelletsCollected: number;
+  /** Perks for this run (picked between levels). */
+  perks: PerkId[];
+  /** XP earned in this level; the game banks it into the run. */
+  xpGained: number;
+  /** Second wind already spent in this level. */
+  secondWindUsed: boolean;
   /** Inventory slots (BALANCE.items.slots), null when empty. Kept when a life is lost. */
   inventory: Array<HeldItem | null>;
   selectedSlot: number;
