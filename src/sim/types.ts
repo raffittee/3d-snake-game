@@ -22,6 +22,9 @@ export interface PlayerState {
   /** Height of the feet above the floor, and vertical speed. 0 and 0 when standing. */
   y: number;
   vy: number;
+  /** Horizontal velocity this frame (units/s), for the Predict snake. */
+  vx: number;
+  vz: number;
   /** Radians. Forward is -z at yaw 0. */
   yaw: number;
   pitch: number;
@@ -157,6 +160,9 @@ export type SimEvent =
   | { type: 'died'; cause: DeathCause }
   | { type: 'lifeLost'; cause: DeathCause; livesLeft: number }
   | { type: 'secondWind' }
+  | { type: 'wallSmashed'; x: number; z: number }
+  | { type: 'relicFound'; left: number }
+  | { type: 'gateOpened' }
   | { type: 'levelComplete' }
   | { type: 'jumped' }
   | { type: 'itemSpawned'; item: ItemId; tier: Tier }
@@ -178,6 +184,14 @@ export interface World {
   pathfinder: Pathfinder;
   /** 1 where a pillar or landmark stands (anything solid), indexed z * size + x. */
   pillars: Uint8Array;
+  /** Ground type per cell (sim/tiles.ts): low walls, crumbling walls, water, bridges. */
+  tiles: Uint8Array;
+  /** Relics still lying in the level, and how many were found. */
+  relics: Cell[];
+  relicsFound: number;
+  /** The exit gate cell (Ruins); open once every relic is found. */
+  gate: Cell;
+  gateOpen: boolean;
   player: PlayerState;
   /** Every live snake. A mid-body cut or a growth split adds one. */
   snakes: SnakeState[];

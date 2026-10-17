@@ -35,8 +35,10 @@ export function updatePlayer(world: World, input: PlayerInput, dt: number): void
   const speed = sprint ? cfg.sprintSpeed : cfg.walkSpeed;
   const sy = Math.sin(p.yaw);
   const cy = Math.cos(p.yaw);
-  p.x += (-sy * f + cy * s) * speed * dt;
-  p.z += (-cy * f - sy * s) * speed * dt;
+  p.vx = (-sy * f + cy * s) * speed;
+  p.vz = (-cy * f - sy * s) * speed;
+  p.x += p.vx * dt;
+  p.z += p.vz * dt;
 
   const grounded = p.y <= 0 && p.vy <= 0;
   if (input.jump && grounded && !p.swimming && !p.tired && p.stamina >= cfg.jumpStaminaCost) {

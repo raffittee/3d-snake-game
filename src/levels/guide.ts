@@ -24,6 +24,8 @@ function progressLines(goal: Goal, world: World): string[] {
       return [`Pellets ${Math.min(world.pelletsCollected, goal.pellets)}/${goal.pellets}`];
     case 'either':
       return goal.goals.flatMap((g) => progressLines(g, world));
+    case 'relicsThenGate':
+      return world.relicsFound < goal.relics ? [`Relics ${world.relicsFound}/${goal.relics}`] : ['Gate open: reach it'];
   }
 }
 

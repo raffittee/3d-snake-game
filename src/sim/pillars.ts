@@ -16,7 +16,7 @@ export function landmarkCells(l: Landmark): Cell[] {
  * touches anything else solid (not even diagonally), and pillars keep clear of the snake's
  * starting lane and the player's start point.
  */
-export function generatePillars(grid: Grid, level: LevelConfig, rng: Rng): Uint8Array {
+export function generatePillars(grid: Grid, level: LevelConfig, rng: Rng, avoid: (x: number, z: number) => boolean = () => false): Uint8Array {
   const n = grid.size;
   const pillars = new Uint8Array(n * n);
   for (const l of level.landmarks) for (const c of landmarkCells(l)) pillars[c.z * n + c.x] = 1;
@@ -30,6 +30,10 @@ export function generatePillars(grid: Grid, level: LevelConfig, rng: Rng): Uint8
     const z = 2 + rng.int(n - 4);
     if (z <= spawn.z + 3 && x <= spawn.x + 4) continue;
     if (Math.abs(x - start.x) <= 2 && Math.abs(z - start.z) <= 2) continue;
+    // Keep a cell of clear ground around walls, relics and the gate (never seal a doorway).
+    let nearLayout = false;
+    for (let dz = -1; dz <= 1 && !nearLayout; dz++) for (let dx = -1; dx <= 1 && !nearLayout; dx++) nearLayout = avoid(x + dx, z + dz);
+    if (nearLayout) continue;
     let ok = true;
     for (let dz = -1; dz <= 1 && ok; dz++) {
       for (let dx = -1; dx <= 1; dx++) {

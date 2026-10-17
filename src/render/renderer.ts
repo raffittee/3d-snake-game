@@ -5,6 +5,7 @@ import type { Quality } from '../settings';
 import { lerp, lerpAngle } from '../sim/math';
 import type { World } from '../sim/types';
 import { buildArena, disposeArena } from './arena';
+import { LayoutViews } from './layoutViews';
 import { loadSky } from './assets';
 import { DropViews, StoneViews } from './drops';
 import type { Palette } from './palette';
@@ -51,6 +52,7 @@ export class GameRenderer {
   private readonly pmrem: THREE.PMREMGenerator;
   private envMap: THREE.Texture | null = null;
   private arena = new THREE.Group();
+  private layout: LayoutViews | null = null;
   private readonly snakes: SnakeViews;
   private readonly pellets: PelletViews;
   private readonly drops: DropViews;
@@ -129,6 +131,7 @@ export class GameRenderer {
     this.pellets.sync(world, dt);
     this.drops.sync(world, dt);
     this.stones.sync(world);
+    this.layout?.update(world, dt, now);
     this.placeSnake(world, view, dt, now);
     this.updateCamera(world, view, dt, now);
     // Two passes: the world, then the first-person hands on top with a fresh depth buffer,
@@ -187,6 +190,8 @@ export class GameRenderer {
     this.scene.remove(this.arena);
     disposeArena(this.arena);
     this.arena = buildArena(world, look);
+    this.layout = new LayoutViews(world, look);
+    this.arena.add(this.layout.group);
     this.scene.add(this.arena);
     this.fitSunToArena(world);
     this.pellets.clear();

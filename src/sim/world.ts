@@ -8,7 +8,9 @@ import { createInventory, updateItems } from './items';
 import { hasPerk, inventorySlots, jumpableTail } from './perks';
 import type { PerkId } from './perks';
 import { updateProjectiles } from './projectiles';
+import { generateLayout } from './layouts';
 import { generatePillars } from './pillars';
+import { Tile, tileHeight } from './tiles';
 import { Pathfinder } from './pathfinding';
 import { spawnPellet } from './pellets';
 import { createPlayer, updatePlayer } from './player';
@@ -21,12 +23,23 @@ import type { DeathCause, PlayerInput, SimEvent, SnakeState, World } from './typ
 export function createWorld(level: LevelConfig, seed: number, perks: PerkId[] = []): World {
   const grid = makeGrid(level.size, BALANCE.cellSize);
   const rng = createRng(seed);
+  const layout = generateLayout(level, grid, rng);
+  const n = grid.size;
+  const gate = layout.exit ?? level.gate ?? { x: -10, z: -10 };
+  const avoid = (x: number, z: number): boolean =>
+    x >= 0 && z >= 0 && x < n && z < n &&
+    (layout.tiles[z * n + x] !== Tile.Open || layout.relics.some((r) => r.x === x && r.z === z) || (Math.abs(x - gate.x) <= 2 && Math.abs(z - gate.z) <= 3));
   const world = {
     level,
     grid,
     rng,
     pathfinder: new Pathfinder(grid.size, rng),
-    pillars: generatePillars(grid, level, rng),
+    pillars: generatePillars(grid, level, rng, avoid),
+    tiles: layout.tiles,
+    relics: layout.relics,
+    relicsFound: 0,
+    gate,
+    gateOpen: false,
     player: createPlayer(grid, level.start),
     pellets: [],
     nextPelletId: 1,
@@ -142,6 +155,18 @@ function resolveCollisions(world: World): void {
   const { player, grid, pillars } = world;
   const r = BALANCE.player.radius;
   const jump = jumpableTail(world);
+  // Walls (Ruins): a crumbling wall always blocks; a low wall only while you are below its top.
+  const tcx = worldToCell(grid, player.x);
+  const tcz = worldToCell(grid, player.z);
+  for (let dz = -1; dz <= 1; dz++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      const x = tcx + dx;
+      const z = tcz + dz;
+      if (!inBounds(grid, x, z)) continue;
+      const h = tileHeight(world.tiles[z * grid.size + x]);
+      if (h > 0 && player.y < h) pushOut(player, r, cellToWorld(grid, x), cellToWorld(grid, z), grid.cell / 2);
+    }
+  }
   // Height-aware: a segment only blocks you while your feet are below its top.
   for (const snake of world.snakes) {
     const len = snake.pos.length;
@@ -226,11 +251,29 @@ export function updateWorld(world: World, input: PlayerInput, dt: number): void 
 
   updateItems(world, input, dt);
   updateProjectiles(world, dt);
+  pickUpRelics(world);
   if (world.status !== 'playing') return;
 
   if (goalMet(world.level.goal, world)) {
     world.status = 'complete';
     world.events.push({ type: 'levelComplete' });
+  }
+}
+
+/** Relics (Ruins): walk over one to pick it up; the last one opens the gate. */
+function pickUpRelics(world: World): void {
+  const goal = world.level.goal;
+  if (goal.kind !== 'relicsThenGate') return;
+  for (let i = world.relics.length - 1; i >= 0; i--) {
+    const c = world.relics[i];
+    if (Math.hypot(cellToWorld(world.grid, c.x) - world.player.x, cellToWorld(world.grid, c.z) - world.player.z) > BALANCE.arena.relicPickupRadius) continue;
+    world.relics.splice(i, 1);
+    world.relicsFound++;
+    world.events.push({ type: 'relicFound', left: Math.max(0, goal.relics - world.relicsFound) });
+    if (!world.gateOpen && world.relicsFound >= goal.relics) {
+      world.gateOpen = true;
+      world.events.push({ type: 'gateOpened' });
+    }
   }
 }
 

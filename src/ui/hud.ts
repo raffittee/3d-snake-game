@@ -5,6 +5,7 @@ import { gapToSnake, scoreOf } from '../sim/world';
 import type { World } from '../sim/types';
 import { $ } from './dom';
 import { ITEM_ICONS, ITEM_NAMES } from './icons';
+import { Tile } from '../sim/tiles';
 
 export function formatTime(s: number): string {
   const m = Math.floor(s / 60);
@@ -162,6 +163,33 @@ export class Hud {
       g.beginPath();
       g.arc(at(i % n), at(Math.floor(i / n)), cs * 0.45, 0, Math.PI * 2);
       g.fill();
+    }
+    // Ruins: low walls light, crumbling walls darker; relics as gold stars; the gate once open.
+    for (let i = 0; i < n * n; i++) {
+      const t = world.tiles[i];
+      if (t === Tile.LowWall || t === Tile.Crumble || t === Tile.Water || t === Tile.Bridge) {
+        g.fillStyle = t === Tile.LowWall ? p.lowWall : t === Tile.Crumble ? p.crumble : t === Tile.Water ? p.water : p.bridge;
+        g.fillRect((i % n) * cs, Math.floor(i / n) * cs, cs, cs);
+      }
+    }
+    g.fillStyle = p.relic;
+    for (const r of world.relics) {
+      const cx = at(r.x);
+      const cz = at(r.z);
+      g.beginPath();
+      for (let k = 0; k < 10; k++) {
+        const a = (k / 10) * Math.PI * 2 - Math.PI / 2;
+        const rad = k % 2 ? cs * 0.35 : cs * 0.85;
+        if (k === 0) g.moveTo(cx + Math.cos(a) * rad, cz + Math.sin(a) * rad);
+        else g.lineTo(cx + Math.cos(a) * rad, cz + Math.sin(a) * rad);
+      }
+      g.closePath();
+      g.fill();
+    }
+    if (world.level.gate) {
+      g.strokeStyle = world.gateOpen ? p.relic : p.start;
+      g.lineWidth = Math.max(1, cs * 0.35);
+      g.strokeRect(at(world.gate.x) - cs * 1.2, at(world.gate.z) - cs * 0.6, cs * 2.4, cs * 1.2);
     }
     // Start pad.
     const { start } = world.level;

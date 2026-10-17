@@ -12,6 +12,9 @@ export interface Palette {
   /** Danger only: the snake's head. */
   alert: string;
   tiers: Record<Tier, string>;
+  lowWall: string;
+  crumble: string;
+  relic: string;
 }
 
 export function readPalette(): Palette {
@@ -26,5 +29,8 @@ export function readPalette(): Palette {
     player: css('--map-player'),
     alert: css('--alert'),
     tiers: { white: css('--tier-white'), blue: css('--tier-blue'), gold: css('--tier-gold') },
+    lowWall: css('--map-lowwall'),
+    crumble: css('--map-crumble'),
+    relic: css('--map-relic'),
   };
 }

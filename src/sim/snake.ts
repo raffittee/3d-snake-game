@@ -2,6 +2,7 @@ import { BALANCE } from '../config/balance';
 import { stepOffset } from './pathfinding';
 import { cellToWorld } from './grid';
 import { lerp } from './math';
+import { blocksSnake, Tile } from './tiles';
 import type { Cell, SnakeState, World } from './types';
 
 /** A snake on `cells` (head first), not yet placed in the world. */
@@ -80,6 +81,9 @@ export function stepSnake(world: World, snake: SnakeState, tx: number, tz: numbe
   const { pathfinder, pillars, grid } = world;
   const grow = snake.pendingGrow > 0;
   pathfinder.blocked.set(pillars);
+  // It goes around low walls (and later deep obstacles); crumbling walls it smashes, so they stay free.
+  const { tiles } = world;
+  for (let i = 0; i < tiles.length; i++) if (blocksSnake(tiles[i])) pathfinder.blocked[i] = 1;
   const length = snake.cells.length;
   for (let i = 0; i < length - (grow ? 0 : 1); i++) {
     const c = snake.cells[i];

@@ -97,6 +97,24 @@ export class Audio8 {
     }
   }
 
+  /** Stone breaking: the snake smashed a crumbling wall. Louder when it is close. */
+  wallSmashed(distance: number): void {
+    const near = Math.max(0, 1 - distance / 30);
+    if (near <= 0) return;
+    this.tone(70, 0.35, 0.05 + near * 0.09, 'sawtooth', 35);
+    this.later(50, () => this.tone(140, 0.2, 0.04 * near, 'square', 60));
+  }
+
+  /** A bright chime for a relic, and a fanfare when the gate opens. */
+  relicFound(): void {
+    this.tone(784, 0.08, 0.06, 'triangle');
+    this.later(90, () => this.tone(1175, 0.14, 0.06, 'triangle'));
+  }
+
+  gateOpened(): void {
+    [523, 659, 784, 1047].forEach((f, i) => this.later(i * 110, () => this.tone(f, 0.18, 0.06, 'triangle')));
+  }
+
   /** A low rising groan: the snake is about to split by itself. */
   splitWarning(): void {
     this.tone(90, 0.9, 0.07, 'sawtooth', 160);

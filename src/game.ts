@@ -376,6 +376,9 @@ export class Game {
       else if (e.type === 'macheteSwing') this.audio.macheteSwing(e.result);
       else if (e.type === 'snakeCut' && e.result !== 'bounce') this.renderer.spray(e.x, e.z);
       else if (e.type === 'snakeSplitWarning') this.audio.splitWarning();
+      else if (e.type === 'wallSmashed') this.audio.wallSmashed(Math.hypot(e.x - this.world.player.x, e.z - this.world.player.z));
+      else if (e.type === 'relicFound') this.audio.relicFound();
+      else if (e.type === 'gateOpened') this.audio.gateOpened();
       else if (e.type === 'itemSpoiled') this.audio.itemSpoiled();
       else if (e.type === 'secondWind') this.hud.flashLifeLost();
       else if (e.type === 'lifeLost') {

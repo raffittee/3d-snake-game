@@ -210,7 +210,7 @@ export function buildArena(world: World, look: TerrainLook): THREE.Group {
     const r = (l.size - 1) / 2;
     for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) landmarkCells.add((l.cell.z + dz) * n + l.cell.x + dx);
   }
-  const rockMat = pbrMaterial(look.pillar);
+  const rockMat = pbrMaterial(look.pillar, look.pillarTint);
   for (let i = 0; i < world.pillars.length; i++) {
     if (!world.pillars[i] || landmarkCells.has(i)) continue;
     const m = new THREE.Mesh(rockGeometry(i, look.pillar.tile), rockMat);

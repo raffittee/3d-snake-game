@@ -14,14 +14,25 @@ export type TerrainId =
   | 'cave';
 
 /** Snake AI behaviors, one file each under src/ai. See docs/GAME_DESIGN.md for the full list. */
-export type BehaviorId = 'chase';
+export type BehaviorId = 'chase' | 'predict';
 
 /** How a level ends. `either` is met as soon as any one of its goals is met. */
 export type Goal =
   | { kind: 'endless' }
   | { kind: 'survive'; seconds: number }
   | { kind: 'collect'; pellets: number }
-  | { kind: 'either'; goals: Goal[] };
+  | { kind: 'either'; goals: Goal[] }
+  /** Find this many relics, then reach the gate (it opens once the last relic is found). */
+  | { kind: 'relicsThenGate'; relics: number }
+  /** Reach the exit (the far dock on Riverside). */
+  | { kind: 'reachExit' };
+
+/** How the level's ground is laid out. `scatter` = open plain with pillars; `ruins` = walled rooms. */
+export type LevelLayout =
+  | { kind: 'scatter' }
+  | { kind: 'ruins'; rooms: number; crumbleShare: number }
+  /** A river across the map from west to east, `width` cells of water, with plank bridges. */
+  | { kind: 'river'; width: number; bridges: number; amplitude: number };
 
 /** Everything that makes a level different. A new level should be mostly a new config file. */
 export interface LevelConfig {
@@ -34,6 +45,10 @@ export interface LevelConfig {
   pillarCount: number;
   /** The player's start and respawn cell. Pillars keep clear of it. */
   start: Cell;
+  /** Ground layout; plain when omitted. */
+  layout?: LevelLayout;
+  /** The exit: the gate (Ruins) or the far dock (Riverside), a cell near the arena's edge. */
+  gate?: Cell;
   /** Tall, always-visible shapes to find your way by. Each one fills its cell like a pillar. */
   landmarks: Landmark[];
   snake: {

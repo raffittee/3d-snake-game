@@ -135,6 +135,22 @@ export const BALANCE = {
     keenEarsRange: 16,
   },
 
+  arena: {
+    /** Pillars and landmarks stop stones below this height (the rocks stand up to 3.4). */
+    solidHeight: 3.4,
+    /** Ruins: a low wall you jump (below the ~1.2 jump apex); a crumbling wall you cannot. */
+    lowWallHeight: 0.7,
+    crumbleHeight: 2.4,
+    /** Walk within this distance of a relic to pick it up, or of the open gate to leave. */
+    relicPickupRadius: 1.1,
+    gateRadius: 1.4,
+  },
+
+  ai: {
+    /** Predict: aim for where the player will be this many seconds from now. */
+    predictSeconds: 1,
+  },
+
   lives: {
     /** Lives per level. They refill when a new level starts. */
     perLevel: 3,

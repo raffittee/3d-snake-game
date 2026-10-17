@@ -18,6 +18,9 @@
   --map-pellet:#ffc94a;
   --map-snake:#a1a874;
   --map-player:#ffffff;
+  --map-lowwall:#b8a681;
+  --map-crumble:#6d655a;
+  --map-relic:#f2c14e;
   /* Item tiers: inventory rings, drop glows, minimap. Never red (red means danger). */
   --tier-white:#e8ece6;
   --tier-blue:#6cb2ff;
