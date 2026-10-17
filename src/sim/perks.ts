@@ -8,13 +8,13 @@ export interface PerkDef {
   name: string;
   /** One line for the pick screen. */
   text: string;
-  /** False while what it acts on does not exist yet (Light feet needs the ambushing snake, Phase 3). */
+  /** False while what it acts on does not exist yet (all are offered now; Light feet came with Level 9's Ambush snake). */
   offered: boolean;
 }
 
 export const PERKS: Record<PerkId, PerkDef> = {
   bigLungs: { name: 'Big lungs', text: '30% more stamina.', offered: true },
-  lightFeet: { name: 'Light feet', text: 'Quieter footsteps: ambushing snakes notice you later.', offered: false },
+  lightFeet: { name: 'Light feet', text: 'Quieter footsteps: ambushing snakes notice you later.', offered: true },
   packrat: { name: 'Packrat', text: 'A third inventory slot.', offered: true },
   preserver: { name: 'Preserver', text: 'Items spoil 50% slower.', offered: true },
   springLegs: { name: 'Spring legs', text: 'Jump higher: clear one more tail segment.', offered: true },

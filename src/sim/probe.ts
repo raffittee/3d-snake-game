@@ -1,8 +1,8 @@
 import { BALANCE } from '../config/balance';
 import { inBounds, worldToCell } from './grid';
 import { jumpableTail } from './perks';
-import { tileHeight } from './tiles';
-import { hasTail, segmentHalfWidth, segmentHeight } from './snake';
+import { isShutDoor, tileHeight } from './tiles';
+import { hasTail, isUnder, segmentHalfWidth, segmentHeight } from './snake';
 import type { SnakeState, World } from './types';
 
 /** What a point (a stone, a blade) is touching. */
@@ -21,6 +21,8 @@ export function probeAt(world: World, x: number, y: number, z: number, r: number
   for (const snake of world.snakes) {
     const head = snake.pos[0];
     const hh = BALANCE.snake.headHalfWidth + r;
+    // Under the sand (Burrow): stones and blades pass over it.
+    if (isUnder(snake, 0)) continue;
     if (Math.abs(x - head.x) <= hh && Math.abs(z - head.z) <= hh && y <= segmentHeight(0, snake.pos.length)) return { kind: 'head', snake };
   }
   const jump = jumpableTail(world);
@@ -28,6 +30,7 @@ export function probeAt(world: World, x: number, y: number, z: number, r: number
     const len = snake.pos.length;
     const tail = hasTail(snake);
     for (let i = 1; i < len; i++) {
+      if (isUnder(snake, i)) continue;
       const p = snake.pos[i];
       const h = segmentHalfWidth(i, len, tail) + r;
       if (Math.abs(x - p.x) <= h && Math.abs(z - p.z) <= h && y <= segmentHeight(i, len, tail, jump)) return { kind: 'body', snake, seg: i };
@@ -37,6 +40,7 @@ export function probeAt(world: World, x: number, y: number, z: number, r: number
   const cz = worldToCell(grid, z);
   if (inBounds(grid, cx, cz) && world.pillars[cz * grid.size + cx] && y <= BALANCE.arena.solidHeight) return { kind: 'solid' };
   if (inBounds(grid, cx, cz) && y <= tileHeight(world.tiles[cz * grid.size + cx])) return { kind: 'solid' };
+  if (inBounds(grid, cx, cz) && isShutDoor(world, cz * grid.size + cx) && y <= BALANCE.house.wallHeight) return { kind: 'solid' };
   return null;
 }
 

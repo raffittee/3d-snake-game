@@ -7,16 +7,22 @@ import { goalMet } from './goals';
 import { createInventory, updateItems } from './items';
 import { hasPerk, inventorySlots, jumpableTail } from './perks';
 import type { PerkId } from './perks';
-import { updateProjectiles } from './projectiles';
+import { updateFirecrackers, updateProjectiles } from './projectiles';
+import { updateBurrow } from './burrow';
+import { updateMongooses } from './mongoose';
+import { stormWarningWave } from './weather';
 import { generateLayout } from './layouts';
 import { generatePillars } from './pillars';
-import { Tile, tileHeight } from './tiles';
+import { Tile, isIce, isOpenGround, isShutDoor, tileHeight } from './tiles';
+import { initDoors, updateHouse } from './house';
+import { initBoss, updateBoss } from './boss';
+import { updateIce } from './ice';
 import { Pathfinder } from './pathfinding';
 import { spawnPellet } from './pellets';
 import { createPlayer, updatePlayer } from './player';
 import { createRng } from './rng';
 import { updateGrowthSplit } from './cut';
-import { advanceSnake, createSnake, hasTail, segmentHalfWidth, segmentHeight } from './snake';
+import { advanceSnake, createSnake, hasTail, isUnder, segmentHalfWidth, segmentHeight } from './snake';
 import type { DeathCause, PlayerInput, SimEvent, SnakeState, World } from './types';
 
 /** Build a fresh game for `level`. The same level and seed always give the same arena. */
@@ -28,7 +34,7 @@ export function createWorld(level: LevelConfig, seed: number, perks: PerkId[] = 
   const gate = layout.exit ?? level.gate ?? { x: -10, z: -10 };
   const avoid = (x: number, z: number): boolean =>
     x >= 0 && z >= 0 && x < n && z < n &&
-    (layout.tiles[z * n + x] !== Tile.Open || layout.relics.some((r) => r.x === x && r.z === z) || (Math.abs(x - gate.x) <= 2 && Math.abs(z - gate.z) <= 3));
+    (!isOpenGround(layout.tiles[z * n + x]) || layout.relics.some((r) => r.x === x && r.z === z) || (Math.abs(x - gate.x) <= 2 && Math.abs(z - gate.z) <= 3));
   const world = {
     level,
     grid,
@@ -38,6 +44,7 @@ export function createWorld(level: LevelConfig, seed: number, perks: PerkId[] = 
     tiles: layout.tiles,
     relics: layout.relics,
     relicsFound: 0,
+    relicsTaken: [],
     boosts: [],
     gate,
     gateOpen: false,
@@ -54,6 +61,19 @@ export function createWorld(level: LevelConfig, seed: number, perks: PerkId[] = 
     selectedSlot: 0,
     drops: [],
     projectiles: [],
+    firecrackers: [],
+    smokes: [],
+    mongooses: [],
+    nextMongooseId: 1,
+    stormWarned: -1,
+    cracking: [],
+    doorState: new Uint8Array(n * n),
+    doorDamage: new Float32Array(n * n),
+    noise: 0,
+    slam: 0,
+    bossPhase: 0,
+    bossStartLength: 0,
+    battery: 0,
     snakes: [],
     nextSnakeId: 1,
     severed: [],
@@ -67,7 +87,10 @@ export function createWorld(level: LevelConfig, seed: number, perks: PerkId[] = 
     invulnerable: false,
     events: [],
   } as unknown as World;
+  initDoors(world);
+  initBoss(world);
   world.snakes.push(createSnake(world));
+  for (const spawn of level.snake.extraSpawns ?? []) world.snakes.push(createSnake(world, spawn));
   faceSnake(world);
   for (let i = 0; i < level.pelletCount; i++) spawnPellet(world);
   return world;
@@ -160,17 +183,20 @@ function resolveCollisions(world: World): void {
   const canSwim = swimRingSlot(world) >= 0;
   const wcx = worldToCell(grid, player.x);
   const wcz = worldToCell(grid, player.z);
-  if (!canSwim) {
-    for (let dz = -1; dz <= 1; dz++) {
-      for (let dx = -1; dx <= 1; dx++) {
-        const x = wcx + dx;
-        const z = wcz + dz;
-        if (inBounds(grid, x, z) && world.tiles[z * grid.size + x] === Tile.Water) pushOut(player, r, cellToWorld(grid, x), cellToWorld(grid, z), grid.cell / 2);
-      }
+  // A hole in the ice (Frozen lake) is open water you cannot swim in: always a wall.
+  for (let dz = -1; dz <= 1; dz++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      const x = wcx + dx;
+      const z = wcz + dz;
+      if (!inBounds(grid, x, z)) continue;
+      const t = world.tiles[z * grid.size + x];
+      if ((t === Tile.Water && !canSwim) || t === Tile.Hole) pushOut(player, r, cellToWorld(grid, x), cellToWorld(grid, z), grid.cell / 2);
     }
   }
   const here = world.tiles[worldToCell(grid, player.z) * grid.size + worldToCell(grid, player.x)];
   player.swimming = here === Tile.Water;
+  player.inMud = here === Tile.Mud;
+  player.onIce = isIce(here);
   // Walls (Ruins): a crumbling wall always blocks; a low wall only while you are below its top.
   const tcx = worldToCell(grid, player.x);
   const tcz = worldToCell(grid, player.z);
@@ -179,7 +205,9 @@ function resolveCollisions(world: World): void {
       const x = tcx + dx;
       const z = tcz + dz;
       if (!inBounds(grid, x, z)) continue;
-      const h = tileHeight(world.tiles[z * grid.size + x]);
+      // A shut door (Broken house) is a wall too.
+      const i = z * grid.size + x;
+      const h = isShutDoor(world, i) ? BALANCE.house.wallHeight : tileHeight(world.tiles[i]);
       if (h > 0 && player.y < h) pushOut(player, r, cellToWorld(grid, x), cellToWorld(grid, z), grid.cell / 2);
     }
   }
@@ -187,7 +215,9 @@ function resolveCollisions(world: World): void {
   for (const snake of world.snakes) {
     const len = snake.pos.length;
     const tail = hasTail(snake);
-    for (let i = 1; i < len; i++) if (player.y < segmentHeight(i, len, tail, jump)) pushOut(player, r, snake.pos[i].x, snake.pos[i].z, segmentHalfWidth(i, len, tail));
+    for (let i = 1; i < len; i++) {
+      if (player.y < segmentHeight(i, len, tail, jump) && !isUnder(snake, i)) pushOut(player, r, snake.pos[i].x, snake.pos[i].z, segmentHalfWidth(i, len, tail));
+    }
   }
   const pcx = worldToCell(grid, player.x);
   const pcz = worldToCell(grid, player.z);
@@ -204,7 +234,8 @@ function resolveCollisions(world: World): void {
   for (const snake of world.snakes) {
     const len = snake.pos.length;
     const tail = hasTail(snake);
-    const below = (i: number): boolean => player.y < segmentHeight(i, len, tail, jump);
+    // Under the sand (Burrow) it can't touch you.
+    const below = (i: number): boolean => player.y < segmentHeight(i, len, tail, jump) && !isUnder(snake, i);
     const head = snake.pos[0];
     if (below(0) && overlapDepth(player, r, head.x, head.z, BALANCE.snake.headHalfWidth) > 0) return kill(world, 'caught', snake);
     for (let i = 1; i < len; i++) {
@@ -219,6 +250,8 @@ export function updateWorld(world: World, input: PlayerInput, dt: number): void 
   world.elapsed += dt;
   world.graceTimer = Math.max(0, world.graceTimer - dt);
   updatePlayer(world, input, dt);
+  // Doors (R), hiding in closets, and how far your noise carries (Broken house; noise counts anywhere).
+  updateHouse(world, input, dt);
 
   const cfg = world.level.snake;
   // A copy: a growth split adds a snake mid-loop, and it should first move next update.
@@ -227,18 +260,26 @@ export function updateWorld(world: World, input: PlayerInput, dt: number): void 
     // It swims too, but slower.
     const head = snake.cells[0];
     if (world.tiles[head.z * world.grid.size + head.x] === Tile.Water) snake.interval *= BALANCE.river.snakeSwimSlow;
+    // Burrowing: faster under the sand.
+    if (snake.burrow.mode === 'down') snake.interval *= BALANCE.ai.burrowSpeed;
+    // A lure (firecracker, smoke bomb) runs out on its own clock, stunned or not.
+    if (snake.lure && (snake.lure.time -= dt) <= 0) snake.lure = null;
     if (snake.stunTimer > 0) {
-      // Stunned (or dazed after splitting off): frozen, no steps and no growth. Its body still blocks.
+      // Stunned (or dazed after splitting off, or pinned by a mongoose): frozen, no steps and no growth. Its body still blocks.
       snake.stunTimer = Math.max(0, snake.stunTimer - dt);
       continue;
     }
+    // About to break the surface (Burrow): it holds still while the sand heaves.
+    if (updateBurrow(world, snake, dt)) continue;
     snake.growTimer += dt;
     if (snake.growTimer >= cfg.growEverySeconds) {
       snake.growTimer -= cfg.growEverySeconds;
       if (snake.cells.length + snake.pendingGrow < cfg.maxLength) snake.pendingGrow++;
     }
-    const target = BEHAVIORS[cfg.behavior](world, snake);
-    advanceSnake(world, snake, dt, target.x, target.z, true);
+    // A firecracker's bang (or a smoke bomb) beats any behavior: it goes there, out of cover if it has
+    // to. The Mother Snake's last stand (boss phase 3) coils.
+    const target = snake.lure ?? BEHAVIORS[world.bossPhase === 3 ? 'coil' : cfg.behavior](world, snake);
+    advanceSnake(world, snake, dt, target.x, target.z, true, 'cover' in target && !!target.cover);
     updateGrowthSplit(world, snake, dt);
   }
   for (let i = world.severed.length - 1; i >= 0; i--) {
@@ -271,6 +312,20 @@ export function updateWorld(world: World, input: PlayerInput, dt: number): void 
 
   updateItems(world, input, dt);
   updateProjectiles(world, dt);
+  updateFirecrackers(world, dt);
+  updateMongooses(world, dt);
+  // Frozen lake: cracked ice gives way under a long snake; standing on it when it goes, you fall in.
+  if (updateIce(world, dt)) kill(world, 'fell', null);
+  if (world.status !== 'playing') return;
+  // Dark cave: the flashlight's battery, and the Mother Snake's phases.
+  updateBoss(world, dt);
+  // Desert: the wind rises a few seconds before each sandstorm.
+  const wave = stormWarningWave(world.level, world.elapsed);
+  if (wave >= 0 && wave > world.stormWarned) {
+    world.stormWarned = wave;
+    world.events.push({ type: 'stormWarning' });
+  }
+  for (let i = world.smokes.length - 1; i >= 0; i--) if ((world.smokes[i].time -= dt) <= 0) world.smokes.splice(i, 1);
   pickUpRelics(world);
   updateSwimming(world, dt);
   if (world.status !== 'playing') return;
@@ -311,17 +366,23 @@ function updateSwimming(world: World, dt: number): void {
   }
 }
 
-/** Relics (Ruins): walk over one to pick it up; the last one opens the gate. */
+/**
+ * Relics (Ruins): walk over one to pick it up; the last one opens the gate. The corn maze's map is
+ * the same thing with a count of one: it opens the exit (and the HUD turns the minimap on).
+ */
 function pickUpRelics(world: World): void {
   const goal = world.level.goal;
-  if (goal.kind !== 'relicsThenGate') return;
+  if (goal.kind !== 'relicsThenGate' && goal.kind !== 'mapThenExit') return;
+  const needed = goal.kind === 'relicsThenGate' ? goal.relics : 1;
   for (let i = world.relics.length - 1; i >= 0; i--) {
     const c = world.relics[i];
     if (Math.hypot(cellToWorld(world.grid, c.x) - world.player.x, cellToWorld(world.grid, c.z) - world.player.z) > BALANCE.arena.relicPickupRadius) continue;
     world.relics.splice(i, 1);
+    world.relicsTaken.push(c);
     world.relicsFound++;
-    world.events.push({ type: 'relicFound', left: Math.max(0, goal.relics - world.relicsFound) });
-    if (!world.gateOpen && world.relicsFound >= goal.relics) {
+    if (goal.kind === 'mapThenExit') world.events.push({ type: 'mapFound' });
+    else world.events.push({ type: 'relicFound', left: Math.max(0, needed - world.relicsFound) });
+    if (!world.gateOpen && world.relicsFound >= needed) {
       world.gateOpen = true;
       world.events.push({ type: 'gateOpened' });
     }
