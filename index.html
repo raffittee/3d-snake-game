@@ -30,7 +30,16 @@
       </div>
     </div>
   </div>
-  <div class="hud-bottom"><span class="lbl">Stamina</span><div class="bar" id="stamBar"><i id="stam"></i></div></div>
+  <div class="hud-bottom-row">
+    <div class="hud-bottom">
+      <div class="meter"><span class="lbl">Stamina</span><div class="bar" id="stamBar"><i id="stam"></i></div></div>
+      <div class="meter"><span class="lbl" id="xpLabel">XP</span><div class="bar xp"><i id="xpFill"></i></div></div>
+    </div>
+    <div class="slots" aria-label="Inventory">
+    <div class="slot empty" id="slot0"><i class="ring"></i><span class="icon" id="slotIcon0"></span><span class="uses" id="slotUses0"></span><span class="key">1</span></div>
+    <div class="slot empty" id="slot1"><i class="ring"></i><span class="icon" id="slotIcon1"></span><span class="uses" id="slotUses1"></span><span class="key">2</span></div>
+    </div>
+  </div>
 </div>
 <div id="cross" hidden></div>
 <div id="stick" hidden><i id="knob"></i></div>
@@ -45,6 +54,8 @@
       <div><dt>Mouse</dt><dd>Look</dd></div>
       <div><dt>Shift</dt><dd>Sprint</dd></div>
       <div><dt>Space</dt><dd>Jump</dd></div>
+      <div><dt>Click / F</dt><dd>Use item</dd></div>
+      <div><dt>1 / 2</dt><dd>Pick item</dd></div>
       <div><dt>Esc</dt><dd>Pause</dd></div>
       <div><dt>M</dt><dd>Sound on/off</dd></div>
       <div><dt>Q / E</dt><dd>Turn</dd></div>

@@ -72,6 +72,31 @@ export const BALANCE = {
     respawnRetry: 2.5,
   },
 
+  items: {
+    /** Inventory slots (a perk can add one later). */
+    slots: 2,
+    /** Walk within this distance of a drop to pick it up. */
+    pickupRadius: 1.1,
+    /** Drops never land closer than this to the player. */
+    minSpawnDistance: 10,
+    /** Rarer tiers: more uses and slower spoiling, multiplied by this. */
+    tierScale: { white: 1, blue: 1.5, gold: 2 },
+    /** Base uses and seconds until it spoils (white tier). */
+    defs: {
+      slingshot: {
+        uses: 3,
+        spoilSeconds: 40,
+        /** A head hit freezes the snake this long. A second hit resets it, it never stacks. */
+        stunSeconds: 2,
+        /** The stone: launch speed, a light gravity so it drops a little, lifetime, size. */
+        stoneSpeed: 40,
+        stoneGravity: 6,
+        stoneLife: 1.5,
+        stoneRadius: 0.12,
+      },
+    },
+  },
+
   lives: {
     /** Lives per level. They refill when a new level starts. */
     perLevel: 3,

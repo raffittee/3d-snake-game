@@ -1,8 +1,10 @@
+import { BALANCE } from '../config/balance';
 import { guideLines } from '../levels/guide';
 import type { Palette } from '../render/palette';
 import { gapToSnake, scoreOf } from '../sim/world';
 import type { World } from '../sim/types';
 import { $ } from './dom';
+import { ITEM_ICONS, ITEM_NAMES } from './icons';
 
 export function formatTime(s: number): string {
   const m = Math.floor(s / 60);
@@ -11,6 +13,8 @@ export function formatTime(s: number): string {
 }
 
 const FLASH_MS = 600;
+/** The spoil ring blinks for the last few seconds of an item's life. */
+const SPOIL_WARN_SECONDS = 5;
 /** Target minimap size in canvas pixels (2x the CSS size); the real size is a whole number of pixels per cell. */
 const MAP_PX = 288;
 
@@ -30,15 +34,42 @@ export class Hud {
   private readonly stam = $('stam');
   private readonly bar = $('stamBar');
   private readonly dangerEl = $('danger');
+  private readonly cross = $('cross');
   private readonly mapCtx: CanvasRenderingContext2D;
+  private readonly slots: Array<{ el: HTMLElement; icon: HTMLElement; uses: HTMLElement; shown: string }> = [];
 
   constructor(private readonly palette: Palette) {
     const map = $<HTMLCanvasElement>('map').getContext('2d');
     if (!map) throw new Error('2D canvas is not available');
     this.mapCtx = map;
+    for (let i = 0; i < BALANCE.items.slots; i++) {
+      this.slots.push({ el: $(`slot${i}`), icon: $(`slotIcon${i}`), uses: $(`slotUses${i}`), shown: '' });
+    }
   }
 
-  update(world: World, danger: number, dead: boolean, finalScore: number): void {
+  /** Inventory slots: icon, uses, tier ring. The DOM changes only when a slot changes; the ring every frame. */
+  private updateSlots(world: World): void {
+    world.inventory.forEach((held, i) => {
+      const view = this.slots[i];
+      if (!view) return;
+      const selected = i === world.selectedSlot;
+      // Uses are whole numbers, except the swim ring's seconds in the water: show those rounded up.
+      const uses = held ? Math.ceil(held.uses - 1e-6) : 0;
+      const key = held ? `${held.item}|${held.tier}|${uses}|${selected}` : `empty|${selected}`;
+      if (key !== view.shown) {
+        view.shown = key;
+        view.el.className = `slot${held ? ` ${held.tier}` : ' empty'}${selected ? ' selected' : ''}`;
+        view.icon.innerHTML = held ? ITEM_ICONS[held.item] : '';
+        view.uses.textContent = held ? (held.item === 'swimRing' ? `${uses}s` : String(uses)) : '';
+        view.el.title = held ? `${ITEM_NAMES[held.item]} (${held.tier})` : 'Empty';
+      }
+      const left = held ? Math.max(0, held.spoilLeft / held.spoilTotal) : 0;
+      view.el.style.setProperty('--p', left.toFixed(3));
+      view.el.classList.toggle('spoiling', !!held && held.spoilLeft < SPOIL_WARN_SECONDS);
+    });
+  }
+
+  update(world: World, danger: number, dead: boolean, finalScore: number, run: HudRun): void {
     this.time.textContent = formatTime(world.elapsed);
     this.score.textContent = String(dead ? finalScore : scoreOf(world));
     this.len.textContent = String(world.snake.cells.length);
@@ -49,12 +80,21 @@ export class Hud {
     this.guideGoal.textContent = guide.goal;
     this.guideProgress.textContent = guide.progress;
     this.guideRule.textContent = guide.rule;
+    this.updateSlots(world);
     this.lives.textContent = String(world.lives);
     this.livesBox.classList.toggle('grace', world.graceTimer > 0);
     this.stam.style.width = `${(world.player.stamina * 100).toFixed(1)}%`;
     this.bar.classList.toggle('tired', world.player.tired);
     const flash = Math.max(0, (this.flashUntil - performance.now()) / FLASH_MS) * 0.9;
     this.dangerEl.style.opacity = dead ? '0.9' : Math.max(danger * 0.75, flash).toFixed(3);
+  }
+
+  /** The crosshair flashes when a stone stuns the snake, so you know the shot landed. */
+  flashHit(): void {
+    this.cross.classList.remove('hit');
+    // Restart the animation even when hits come in quick succession.
+    void this.cross.offsetWidth;
+    this.cross.classList.add('hit');
   }
 
   /** Brief red edge when a life is lost. */
@@ -107,6 +147,20 @@ export class Hud {
     g.beginPath();
     g.arc(at(start.x), at(start.z), cs * 0.6, 0, Math.PI * 2);
     g.stroke();
+    // Item drops: diamonds in their tier's color.
+    for (const d of world.drops) {
+      const cx = at(d.x);
+      const cz = at(d.z);
+      const r = cs * 0.55;
+      g.fillStyle = p.tiers[d.tier];
+      g.beginPath();
+      g.moveTo(cx, cz - r);
+      g.lineTo(cx + r, cz);
+      g.lineTo(cx, cz + r);
+      g.lineTo(cx - r, cz);
+      g.closePath();
+      g.fill();
+    }
     // Pellets.
     g.fillStyle = p.pellet;
     for (const pe of world.pellets) {

@@ -4,6 +4,8 @@ import type { LevelConfig } from '../levels/types';
 import { overlapDepth, pushOut } from './collision';
 import { cellToWorld, inBounds, makeGrid, worldToCell } from './grid';
 import { goalMet } from './goals';
+import { createInventory, updateItems } from './items';
+import { updateProjectiles } from './projectiles';
 import { generatePillars } from './pillars';
 import { Pathfinder } from './pathfinding';
 import { spawnPellet } from './pellets';
@@ -28,6 +30,12 @@ export function createWorld(level: LevelConfig, seed: number): World {
     pelletRespawn: 0,
     elapsed: 0,
     pelletsCollected: 0,
+    inventory: createInventory(inventorySlots(perks)),
+    selectedSlot: 0,
+    drops: [],
+    projectiles: [],
+    nextDropId: 1,
+    dropTimer: level.items.firstDropAfter,
     lives: BALANCE.lives.perLevel,
     graceTimer: 0,
     status: 'playing',
@@ -149,6 +157,10 @@ export function updateWorld(world: World, input: PlayerInput, dt: number): void 
       world.pelletRespawn = BALANCE.pellets.respawnRetry;
     }
   }
+
+  updateItems(world, input, dt);
+  updateProjectiles(world, dt);
+  if (world.status !== 'playing') return;
 
   if (goalMet(world.level.goal, world)) {
     world.status = 'complete';

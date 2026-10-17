@@ -41,6 +41,12 @@ export interface PlayerInput {
   sprint: boolean;
   /** Jump was pressed this frame (an edge, not a held key). */
   jump: boolean;
+  /** Use the selected item (an edge). */
+  useItem: boolean;
+  /** Select this inventory slot, or -1 for no change. */
+  selectSlot: number;
+  /** Step the selected slot by this much (mouse wheel), 0 for none. Wraps around. */
+  cycleSlot: number;
   /** Key turning: positive turns left. */
   turn: number;
   /** Radians added to yaw this frame (mouse or touch look). */
@@ -64,7 +70,50 @@ export interface SnakeState {
   growTimer: number;
   /** Total grid steps taken in an interactive game. */
   steps: number;
+  /** Seconds of stun left (slingshot, or dazed after splitting off). No steps and no growth meanwhile. */
+  stunTimer: number;
 }
+
+/** Items, one entry per kind. Extend as items are built; each needs an entry in src/items. */
+export type ItemId = 'slingshot' | 'machete' | 'swimRing';
+
+/** Rarer tiers carry more uses and spoil slower (BALANCE.items.tierScale). */
+export type Tier = 'white' | 'blue' | 'gold';
+
+/** An item in an inventory slot. */
+export interface HeldItem {
+  item: ItemId;
+  tier: Tier;
+  uses: number;
+  /** Seconds until it spoils, and the full spoil time (for the draining ring). */
+  spoilLeft: number;
+  spoilTotal: number;
+}
+
+/** An item lying in the arena, waiting to be picked up. */
+export interface Drop {
+  id: number;
+  item: ItemId;
+  tier: Tier;
+  /** Grid cell. */
+  x: number;
+  z: number;
+}
+
+/** A thrown or shot object in flight (the slingshot's stone). World units. */
+export interface Projectile {
+  x: number;
+  y: number;
+  z: number;
+  vx: number;
+  vy: number;
+  vz: number;
+  /** Seconds left before it is removed. */
+  life: number;
+}
+
+/** What a projectile stopped against. */
+export type HitTarget = 'head' | 'body' | 'solid' | 'wall' | 'ground';
 
 export interface Pellet {
   id: number;
@@ -82,7 +131,14 @@ export type SimEvent =
   | { type: 'died'; cause: DeathCause }
   | { type: 'lifeLost'; cause: DeathCause; livesLeft: number }
   | { type: 'levelComplete' }
-  | { type: 'jumped' };
+  | { type: 'jumped' }
+  | { type: 'itemSpawned'; item: ItemId; tier: Tier }
+  | { type: 'itemPickedUp'; slot: number; item: ItemId; tier: Tier }
+  | { type: 'itemUsed'; slot: number; item: ItemId; usesLeft: number }
+  | { type: 'itemSpoiled'; slot: number; item: ItemId }
+  | { type: 'shotFired' }
+  | { type: 'shotHit'; target: HitTarget }
+  | { type: 'snakeStunned'; seconds: number }
 
 export interface World {
   level: LevelConfig;
@@ -98,6 +154,16 @@ export interface World {
   pelletRespawn: number;
   elapsed: number;
   pelletsCollected: number;
+  /** Inventory slots (BALANCE.items.slots), null when empty. Kept when a life is lost. */
+  inventory: Array<HeldItem | null>;
+  selectedSlot: number;
+  /** Items lying in the arena. */
+  drops: Drop[];
+  /** Stones in flight. */
+  projectiles: Projectile[];
+  nextDropId: number;
+  /** Seconds until the next drop tries to fall. */
+  dropTimer: number;
   /** Lives left in this level, including the one being played. */
   lives: number;
   /** Seconds of post-respawn safety left. */

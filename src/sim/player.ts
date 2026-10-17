@@ -4,7 +4,7 @@ import { cellToWorld } from './grid';
 import type { Grid } from './grid';
 import type { Cell, PlayerInput, PlayerState, World } from './types';
 
-export const NO_INPUT: PlayerInput = { forward: 0, strafe: 0, sprint: false, jump: false, turn: 0, lookYaw: 0, lookPitch: 0 };
+export const NO_INPUT: PlayerInput = { forward: 0, strafe: 0, sprint: false, jump: false, useItem: false, selectSlot: -1, cycleSlot: 0, turn: 0, lookYaw: 0, lookPitch: 0 };
 
 /** A fresh player standing on `start`. The caller turns them to face the snake. */
 export function createPlayer(grid: Grid, start: Cell): PlayerState {

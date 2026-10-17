@@ -52,7 +52,7 @@ export class Game {
   constructor(private readonly options: GameOptions) {
     const palette = readPalette();
     const settings = loadSettings();
-    this.renderer = new GameRenderer(this.view, options.forceQuality ?? settings.quality);
+    this.renderer = new GameRenderer(this.view, options.forceQuality ?? settings.quality, palette);
     this.hud = new Hud(palette);
     this.input = new Input(this.view, {
       onPause: () => this.pause(),
@@ -289,6 +289,12 @@ export class Game {
       else if (e.type === 'snakeAtePellet') this.audio.gulp();
       else if (e.type === 'snakeStep') this.audio.step(e.distance);
       else if (e.type === 'jumped') this.audio.jump();
+      else if (e.type === 'itemSpawned') this.audio.itemSpawned();
+      else if (e.type === 'itemPickedUp') this.audio.itemPickedUp();
+      else if (e.type === 'shotFired') this.audio.shotFired();
+      else if (e.type === 'shotHit') this.audio.shotHit(e.target === 'head');
+      else if (e.type === 'snakeStunned') this.hud.flashHit();
+      else if (e.type === 'itemSpoiled') this.audio.itemSpoiled();
       else if (e.type === 'lifeLost') {
         this.audio.lifeLost();
         this.hud.flashLifeLost();

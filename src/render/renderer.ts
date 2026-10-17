@@ -6,6 +6,8 @@ import { lerp, lerpAngle } from '../sim/math';
 import type { World } from '../sim/types';
 import { buildArena, disposeArena } from './arena';
 import { loadSky } from './assets';
+import { DropViews, StoneViews } from './drops';
+import type { Palette } from './palette';
 import { PelletViews } from './pellets';
 import { SnakeBody } from './snakeBody';
 import { SnakeHead } from './snakeHead';
@@ -52,6 +54,8 @@ export class GameRenderer {
   private body: SnakeBody;
   private readonly head = new SnakeHead();
   private readonly pellets: PelletViews;
+  private readonly drops: DropViews;
+  private readonly stones: StoneViews;
   private look: TerrainLook = terrainLook('plains');
   private world: World | null = null;
   private quality: Quality = DEFAULT_SETTINGS.quality;
@@ -61,7 +65,7 @@ export class GameRenderer {
   private stepsSeen = 0;
   private lastHead = { x: Number.NaN, z: Number.NaN };
 
-  constructor(canvas: HTMLCanvasElement, quality: Quality) {
+  constructor(canvas: HTMLCanvasElement, quality: Quality, palette: Palette) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -76,6 +80,8 @@ export class GameRenderer {
     this.body = new SnakeBody(BALANCE.snake.maxLength, RINGS_PER_SEGMENT[quality]);
     this.scene.add(this.body.mesh, this.head.group);
     this.pellets = new PelletViews(this.scene);
+    this.drops = new DropViews(this.scene, palette.tiers);
+    this.stones = new StoneViews(this.scene);
     this.camera.rotation.order = 'YXZ';
     this.applyLook();
     this.setQuality(quality);
@@ -125,6 +131,8 @@ export class GameRenderer {
   render(world: World, view: CameraView, dt: number, now: number): void {
     if (world !== this.world) this.setWorld(world);
     this.pellets.sync(world, dt);
+    this.drops.sync(world, dt);
+    this.stones.sync(world);
     this.placeSnake(world, view, dt, now);
     this.updateCamera(world, view, dt);
     this.renderer.render(this.scene, this.camera);

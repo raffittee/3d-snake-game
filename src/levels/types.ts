@@ -1,4 +1,4 @@
-import type { Cell } from '../sim/types';
+import type { Cell, ItemId, Tier } from '../sim/types';
 
 /** Terrain ids match docs/GAME_DESIGN.md. Only 'plains' is implemented so far. */
 export type TerrainId =
@@ -48,9 +48,23 @@ export interface LevelConfig {
     maxLength: number;
   };
   pelletCount: number;
+  items: LevelItems;
   goal: Goal;
   /** Short text for the corner guide. Progress is not stored here; `guideLines` derives it from the world. */
   guide: LevelGuide;
+}
+
+/** Which items fall in a level, how often, and how rare the better tiers are. */
+export interface LevelItems {
+  /** Items that can drop here, picked by weight. Empty = no drops. */
+  drops: Array<{ item: ItemId; weight: number }>;
+  /** Seconds before the first drop, then between drops. */
+  firstDropAfter: number;
+  every: number;
+  /** No new drop while this many lie on the ground. */
+  maxOnGround: number;
+  /** Chance of each tier; they should add up to 1. */
+  tierOdds: Record<Tier, number>;
 }
 
 export type LandmarkKind = 'tower' | 'tree';
