@@ -5,7 +5,9 @@ import { gapToSnake, scoreOf } from '../sim/world';
 import type { World } from '../sim/types';
 import { $ } from './dom';
 import { ITEM_ICONS, ITEM_NAMES } from './icons';
-import { Tile } from '../sim/tiles';
+import { DoorState, Tile, hiddenInGrass } from '../sim/tiles';
+import { doorInReach } from '../sim/house';
+import { isUnder } from '../sim/snake';
 
 export function formatTime(s: number): string {
   const m = Math.floor(s / 60);
@@ -46,6 +48,16 @@ export class Hud {
   private readonly guideRule = $('gRule');
   private readonly stam = $('stam');
   private readonly bar = $('stamBar');
+  private readonly buffs = $('buffs');
+  private buffsShown = '';
+  private readonly prompt = $('prompt');
+  private readonly promptText = $('promptText');
+  private promptShown = '';
+  private readonly lightMeter = $('lightMeter');
+  private readonly lightBar = $('lightBar');
+  private readonly lightFill = $('lightFill');
+  private readonly noiseMeter = $('noiseMeter');
+  private readonly noiseFill = $('noiseFill');
   private readonly dangerEl = $('danger');
   private readonly cross = $('cross');
   private readonly levelLabel = $('gLevel');
@@ -109,6 +121,44 @@ export class Hud {
     this.livesBox.classList.toggle('grace', world.graceTimer > 0);
     this.stam.style.width = `${(world.player.stamina * 100).toFixed(1)}%`;
     this.bar.classList.toggle('tired', world.player.tired);
+    // Energy drink: the bar glows while sprinting is free.
+    this.bar.classList.toggle('energized', world.player.energy > 0);
+    // Broken house: what R does at the door in front of you, and how far your noise carries.
+    const door = dead ? null : doorInReach(world);
+    const promptText = !door || door.state === DoorState.Broken ? '' : door.state === DoorState.Shut ? 'Open door' : 'Shut door';
+    if (promptText !== this.promptShown) {
+      this.promptShown = promptText;
+      this.prompt.hidden = !promptText;
+      this.promptText.textContent = promptText;
+    }
+    // Dark cave: the flashlight's battery.
+    const lit = !!world.level.flashlight;
+    this.lightMeter.hidden = !lit;
+    if (lit) {
+      this.lightFill.style.width = `${Math.min(100, (world.battery / BALANCE.cave.batteryStart) * 100).toFixed(0)}%`;
+      this.lightBar.classList.toggle('low', world.battery < BALANCE.cave.batteryLow);
+    }
+    const ambush = world.level.snake.behavior === 'ambush';
+    this.noiseMeter.hidden = !ambush;
+    if (ambush) this.noiseFill.style.width = `${Math.min(100, (world.noise / BALANCE.noise.slam) * 100).toFixed(0)}%`;
+    // Effects still running, with whole seconds left (the DOM only changes when the text does).
+    const buffs = [
+      world.player.energy > 0 ? `Energy ${Math.ceil(world.player.energy)}s` : '',
+      world.player.cleats > 0 ? `Cleats ${Math.ceil(world.player.cleats)}s` : '',
+    ].filter(Boolean);
+    const text = buffs.join('|');
+    if (text !== this.buffsShown) {
+      this.buffsShown = text;
+      this.buffs.hidden = buffs.length === 0;
+      this.buffs.replaceChildren(
+        ...buffs.map((b) => {
+          const chip = document.createElement('span');
+          chip.className = 'buff';
+          chip.textContent = b;
+          return chip;
+        }),
+      );
+    }
     const flash = Math.max(0, (this.flashUntil - performance.now()) / FLASH_MS) * 0.9;
     this.dangerEl.style.opacity = dead ? '0.9' : Math.max(danger * 0.75, flash).toFixed(3);
   }
@@ -143,6 +193,15 @@ export class Hud {
     const at = (cell: number): number => (cell + 0.5) * cs;
     g.fillStyle = p.ground;
     g.fillRect(0, 0, canvas.width, canvas.height);
+    // Corn maze: nothing to see until you find the map.
+    if (world.level.minimap?.offUntilMap && world.relicsFound < 1) {
+      g.fillStyle = p.start;
+      g.font = `600 ${Math.round(canvas.width / 9)}px Inter, system-ui, sans-serif`;
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.fillText('No map', canvas.width / 2, canvas.height / 2);
+      return;
+    }
 
     // Landmarks: their real footprint, with a bright outline.
     for (const l of world.level.landmarks) {
@@ -165,10 +224,29 @@ export class Hud {
       g.fill();
     }
     // Ruins: low walls light, crumbling walls darker; relics as gold stars; the gate once open.
+    // Riverside: water and bridges. Tall grass: the grass patches.
     for (let i = 0; i < n * n; i++) {
       const t = world.tiles[i];
-      if (t === Tile.LowWall || t === Tile.Crumble || t === Tile.Water || t === Tile.Bridge) {
-        g.fillStyle = t === Tile.LowWall ? p.lowWall : t === Tile.Crumble ? p.crumble : t === Tile.Water ? p.water : p.bridge;
+      const fill =
+        t === Tile.LowWall ? p.lowWall
+        : t === Tile.Crumble ? p.crumble
+        : t === Tile.Water ? p.water
+        : t === Tile.Bridge ? p.bridge
+        : t === Tile.Grass ? p.grass
+        : t === Tile.Corn ? p.corn
+        : t === Tile.Mud ? p.mud
+        : t === Tile.Log ? p.log
+        : t === Tile.Pad ? p.pad
+        : t === Tile.Ice ? p.ice
+        : t === Tile.CrackedIce ? p.crackedIce
+        : t === Tile.Hole ? p.hole
+        : t === Tile.HouseWall ? p.houseWall
+        : t === Tile.Door ? (world.doorState[i] === DoorState.Shut ? p.doorShut : p.doorOpen)
+        : t === Tile.Closet ? p.closet
+        : t === Tile.CaveWall ? p.rock
+        : null;
+      if (fill) {
+        g.fillStyle = fill;
         g.fillRect((i % n) * cs, Math.floor(i / n) * cs, cs, cs);
       }
     }
@@ -212,26 +290,51 @@ export class Hud {
       g.closePath();
       g.fill();
     }
-    // Pellets.
+    // Pellets (Tall grass hides them: they are what you search the grass for).
     g.fillStyle = p.pellet;
-    for (const pe of world.pellets) {
+    if (!world.level.minimap?.hidePellets) {
+      for (const pe of world.pellets) {
+        g.beginPath();
+        g.arc(at(pe.x), at(pe.z), cs * 0.38, 0, Math.PI * 2);
+        g.fill();
+      }
+    }
+    // Snakes: one thick line through each one's segments, the head as a red dot. Whatever lies in
+    // tall grass is left out: the grass hides it on the map as it does on screen.
+    const toMap = (v: number): number => ((v + grid.half) / grid.cell) * cs;
+    const dark = !!world.level.minimap?.dark;
+    if (dark) {
+      // Dark cave: only the cave around you shows (black beyond); never the snakes.
+      g.fillStyle = '#000';
       g.beginPath();
-      g.arc(at(pe.x), at(pe.z), cs * 0.38, 0, Math.PI * 2);
+      g.rect(0, 0, canvas.width, canvas.height);
+      g.arc(toMap(player.x), toMap(player.z), BALANCE.cave.mapRadius * cs, 0, Math.PI * 2, true);
       g.fill();
     }
-    // Snakes: one thick line through each one's segments, the head as a red dot.
-    const toMap = (v: number): number => ((v + grid.half) / grid.cell) * cs;
-    for (const snake of world.snakes) {
+    for (const snake of dark ? [] : world.snakes) {
       g.strokeStyle = p.snake;
       g.lineWidth = cs * 0.75;
       g.lineCap = 'round';
       g.lineJoin = 'round';
       g.beginPath();
-      snake.pos.forEach((q, i) => (i ? g.lineTo(toMap(q.x), toMap(q.z)) : g.moveTo(toMap(q.x), toMap(q.z))));
+      let drawing = false;
+      for (let i = 0; i < snake.pos.length; i++) {
+        const q = snake.pos[i];
+        // Hidden in tall grass, or under the sand (Burrow): not on the map either.
+        if (hiddenInGrass(world, q.x, q.z) || isUnder(snake, i)) {
+          drawing = false;
+          continue;
+        }
+        if (drawing) g.lineTo(toMap(q.x), toMap(q.z));
+        else g.moveTo(toMap(q.x), toMap(q.z));
+        drawing = true;
+      }
       g.stroke();
+      const head = snake.pos[0];
+      if (hiddenInGrass(world, head.x, head.z) || isUnder(snake, 0)) continue;
       g.fillStyle = p.alert;
       g.beginPath();
-      g.arc(toMap(snake.pos[0].x), toMap(snake.pos[0].z), cs * 0.62, 0, Math.PI * 2);
+      g.arc(toMap(head.x), toMap(head.z), cs * 0.62, 0, Math.PI * 2);
       g.fill();
     }
     // Player arrow.

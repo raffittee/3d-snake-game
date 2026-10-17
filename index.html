@@ -34,6 +34,9 @@
     <div class="hud-bottom">
       <div class="meter"><span class="lbl">Stamina</span><div class="bar" id="stamBar"><i id="stam"></i></div></div>
       <div class="meter"><span class="lbl" id="xpLabel">XP</span><div class="bar xp"><i id="xpFill"></i></div></div>
+      <div class="meter" id="lightMeter" hidden><span class="lbl">Light</span><div class="bar light" id="lightBar"><i id="lightFill"></i></div></div>
+      <div class="meter" id="noiseMeter" hidden><span class="lbl">Noise</span><div class="bar noise"><i id="noiseFill"></i></div></div>
+      <div class="buffs" id="buffs" hidden></div>
     </div>
     <div class="slots" aria-label="Inventory">
     <div class="slot empty" id="slot0"><i class="ring"></i><span class="icon" id="slotIcon0"></span><span class="uses" id="slotUses0"></span><span class="key">1</span></div>
@@ -43,6 +46,7 @@
 </div>
 <div id="cross" hidden></div>
 <div id="keenArrow" hidden aria-hidden="true"></div>
+<div id="prompt" hidden><kbd>R</kbd> <span id="promptText"></span></div>
 <div id="stick" hidden><i id="knob"></i></div>
 <button id="sprintBtn" hidden>RUN</button>
 
@@ -57,6 +61,7 @@
       <div><dt>Space</dt><dd>Jump</dd></div>
       <div><dt>Click / F</dt><dd>Use item</dd></div>
       <div><dt>1 / 2</dt><dd>Pick item</dd></div>
+      <div><dt>R</dt><dd>Open / shut door</dd></div>
       <div><dt>Esc</dt><dd>Pause</dd></div>
       <div><dt>M</dt><dd>Sound on/off</dd></div>
       <div><dt>Q / E</dt><dd>Turn</dd></div>

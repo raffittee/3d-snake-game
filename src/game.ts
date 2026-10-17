@@ -11,6 +11,8 @@ import type { Rng } from './sim/rng';
 import { levelForXp, newRun, offerPerks, pendingPicks, xpForNextLevel } from './sim/run';
 import type { RunState } from './sim/run';
 import type { PerkId } from './sim/perks';
+import { hiddenInGrass } from './sim/tiles';
+import { stormAt } from './sim/weather';
 import { createWorld, dangerLevel, drainEvents, gapToSnake, nearestSnake, scoreOf, updateDemo, updateWorld } from './sim/world';
 import type { World } from './sim/types';
 import type { Quality, Settings } from './settings';
@@ -50,6 +52,8 @@ export class Game {
   private danger = 0;
   private wander = { x: 1, z: 1 };
   private wanderT = 0;
+  /** Seconds until your next swish through tall grass. */
+  private grassStepT = 0;
   private last = performance.now();
   /** Debug-panel frame stats, refreshed once a second. */
   private perf = { windowStart: performance.now(), frames: 0, worstMs: 0, fps: 0, shownWorstMs: 0, shownPeakDelta: 0 };
@@ -342,6 +346,17 @@ export class Game {
       const input = this.input.sample();
       updateWorld(w, input, dt);
       if (w.player.moving && w.player.y === 0) this.cam.bob += dt * (w.player.sprinting ? 14 : 9);
+      // Walking through tall grass swishes; mud squelches.
+      this.grassStepT -= dt;
+      if (w.player.moving && w.player.y === 0 && this.grassStepT <= 0) {
+        if (hiddenInGrass(w, w.player.x, w.player.z)) {
+          this.audio.grassStep();
+          this.grassStepT = w.player.sprinting ? 0.24 : 0.36;
+        } else if (w.player.inMud) {
+          this.audio.mudStep();
+          this.grassStepT = w.player.sprinting ? 0.34 : 0.5;
+        }
+      }
       this.danger = dangerLevel(gapToSnake(w));
       this.handleEvents();
       if (w.status === 'dead') this.die();
@@ -359,13 +374,25 @@ export class Game {
     } else if (this.state === 'dead') {
       this.cam.deathT += dt;
     }
+    // Desert wind swells with the sandstorm while you play; silent anywhere else.
+    this.audio.setWind(this.state === 'play' ? stormAt(w.level, w.elapsed) : 0);
   }
 
   private handleEvents(): void {
     for (const e of drainEvents(this.world)) {
       if (e.type === 'pelletCollected') this.audio.pellet();
       else if (e.type === 'snakeAtePellet') this.audio.gulp();
-      else if (e.type === 'snakeStep') this.audio.step(e.distance);
+      // In tall grass you can't see it: you hear it rustle, from its side.
+      else if (e.type === 'snakeStep') {
+        if (e.hidden) this.audio.rustle(e.distance, this.panOf(e.x, e.z));
+        // In the dark you track it by sound: its steps carry further there.
+        else this.audio.step(e.distance, this.panOf(e.x, e.z), this.world.level.flashlight ? 30 : 16);
+      } else if (e.type === 'firecrackerThrown') this.audio.firecrackerThrown();
+      else if (e.type === 'firecrackerLanded') this.audio.fuseHiss(this.distanceTo(e.x, e.z), this.panOf(e.x, e.z));
+      else if (e.type === 'firecrackerBang') {
+        this.renderer.bang(e.x, e.z);
+        this.audio.firecrackerBang(this.distanceTo(e.x, e.z), this.panOf(e.x, e.z));
+      }
       else if (e.type === 'jumped') this.audio.jump();
       else if (e.type === 'itemSpawned') this.audio.itemSpawned();
       else if (e.type === 'itemPickedUp') this.audio.itemPickedUp();
@@ -377,7 +404,30 @@ export class Game {
       else if (e.type === 'snakeCut' && e.result !== 'bounce') this.renderer.spray(e.x, e.z);
       else if (e.type === 'snakeSplitWarning') this.audio.splitWarning();
       else if (e.type === 'wallSmashed') this.audio.wallSmashed(Math.hypot(e.x - this.world.player.x, e.z - this.world.player.z));
-      else if (e.type === 'relicFound') this.audio.relicFound();
+      else if (e.type === 'relicFound' && this.world.level.goal.kind === 'relicsThenGate' && this.world.level.goal.relic === 'lantern') this.audio.lanternLit();
+      else if (e.type === 'relicFound' || e.type === 'mapFound') this.audio.relicFound();
+      else if (e.type === 'energyDrink') this.audio.energyDrink();
+      else if (e.type === 'stormWarning') this.audio.stormWarning();
+      else if (e.type === 'iceCracking') this.audio.iceCracking(this.distanceTo(e.x, e.z), this.panOf(e.x, e.z));
+      else if (e.type === 'iceBroke') this.audio.iceBroke(this.distanceTo(e.x, e.z), this.panOf(e.x, e.z));
+      else if (e.type === 'cleatsOn') this.audio.cleatsOn();
+      else if (e.type === 'bossPhase') this.audio.bossRoar();
+      else if (e.type === 'batteryIn') this.audio.batteryIn();
+      else if (e.type === 'batteryDead') this.audio.batteryDead();
+      else if (e.type === 'doorOpened') this.audio.doorOpened();
+      else if (e.type === 'doorShut') this.audio.doorShut();
+      else if (e.type === 'doorBash') this.audio.doorBash(this.distanceTo(e.x, e.z), this.panOf(e.x, e.z));
+      else if (e.type === 'doorBroken') this.audio.doorBroken(this.distanceTo(e.x, e.z), this.panOf(e.x, e.z));
+      else if (e.type === 'snakeNoticed') this.audio.snakeNoticed(this.distanceTo(e.x, e.z), this.panOf(e.x, e.z));
+      else if (e.type === 'snakeDefeated') this.audio.gateOpened();
+      else if (e.type === 'snakeBurrowed' || e.type === 'snakeSurfaced') this.audio.sandBurst(this.distanceTo(e.x, e.z), this.panOf(e.x, e.z));
+      else if (e.type === 'snakeRising') this.audio.sandRumble(this.distanceTo(e.x, e.z), this.panOf(e.x, e.z));
+      else if (e.type === 'mongooseReleased') this.audio.mongooseReleased();
+      else if (e.type === 'mongooseFight') this.audio.mongooseFight(this.distanceTo(e.x, e.z), this.panOf(e.x, e.z));
+      else if (e.type === 'smokeBomb') {
+        this.renderer.smokeCloud(e.x, e.z, BALANCE.items.defs.smokeBomb.seconds);
+        this.audio.smokeBomb();
+      }
       else if (e.type === 'gateOpened') this.audio.gateOpened();
       else if (e.type === 'itemSpoiled') this.audio.itemSpoiled();
       else if (e.type === 'secondWind') this.hud.flashLifeLost();
@@ -386,6 +436,19 @@ export class Game {
         this.hud.flashLifeLost();
       }
     }
+  }
+
+  private distanceTo(x: number, z: number): number {
+    return Math.hypot(x - this.world.player.x, z - this.world.player.z);
+  }
+
+  /** Stereo pan of a sound at (x, z): -1 hard left, 1 hard right of where you face. */
+  private panOf(x: number, z: number): number {
+    const p = this.world.player;
+    const d = Math.hypot(x - p.x, z - p.z);
+    if (d < 1e-3) return 0;
+    // Your right is (cos yaw, -sin yaw) when forward is (-sin yaw, -cos yaw).
+    return ((x - p.x) * Math.cos(p.yaw) - (z - p.z) * Math.sin(p.yaw)) / d;
   }
 
   /** What the HUD shows about the run: level, XP toward the next level-up, the nearest snake for Keen ears. */
