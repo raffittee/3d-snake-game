@@ -1,0 +1,194 @@
+/* Layout: full-bleed 3D view; dark translucent HUD panels pinned to corners; one centered card for menus.
+   Red (--alert) means danger only: the danger vignette, the snake head on the minimap, the tired stamina bar, blood. */
+:root{
+  --panel:rgba(14,18,16,.56);
+  --panel-strong:rgba(14,18,16,.84);
+  --line:rgba(255,255,255,.14);
+  --text:#eef2ee;
+  --muted:#a7b1a9;
+  --accent:#e6d39a;      /* primary buttons, focus */
+  --accent-ink:#1d1a10;
+  --alert:#d23b2f;       /* danger only */
+  --veil:linear-gradient(180deg,rgba(8,10,9,.35),rgba(8,10,9,.72));
+  /* Minimap colors, read by render/palette.ts. */
+  --map-ground:#26301f;
+  --map-rock:#7d847a;
+  --map-landmark:#efe9d8;
+  --map-start:#c8c2b0;
+  --map-pellet:#ffc94a;
+  --map-snake:#a1a874;
+  --map-player:#ffffff;
+  --map-lowwall:#b8a681;
+  --map-crumble:#6d655a;
+  --map-relic:#f2c14e;
+  --map-water:#2f6f7a;
+  --map-bridge:#8a6a45;
+  /* Tall grass: darker than open ground and well apart from the snake's olive. */
+  --map-grass:#3c4630;
+  /* Corn maze walls (once you have the map). */
+  --map-corn:#7a6a33;
+  /* Swamp: mud, and the firm paths across it (logs and lily pads). */
+  --map-mud:#2d3424;
+  --map-log:#7a5f40;
+  --map-pad:#5c7a34;
+  /* Frozen lake: ice, cracked ice (the lure spots), holes. */
+  --map-ice:#3b5566;
+  --map-cracked:#8fb0c2;
+  --map-hole:#0b141a;
+  /* Broken house: walls, doors (shut brighter than open), closets. */
+  --map-housewall:#a99a7c;
+  --map-door-shut:#c08a52;
+  --map-door-open:#4a3a2a;
+  --map-closet:#6b4f3c;
+  /* The energy drink's glow on the stamina bar. */
+  --energy:#b8e04a;
+  /* Item tiers: inventory rings, drop glows, minimap. Never red (red means danger). */
+  --tier-white:#e8ece6;
+  --tier-blue:#6cb2ff;
+  --tier-gold:#f2c14e;
+  --font:"Inter Variable",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --radius:12px;
+  color-scheme:dark;
+}
+html,body{height:100%;margin:0;overflow:hidden;background:#1b211d;color:var(--text);touch-action:none;-webkit-user-select:none;user-select:none}
+body{font:16px/1.4 var(--font);-webkit-font-smoothing:antialiased}
+#view{position:fixed;inset:0;width:100%;height:100%;display:block;cursor:crosshair;touch-action:none}
+#danger{position:fixed;inset:0;pointer-events:none;opacity:0;background:radial-gradient(ellipse at center,transparent 45%,var(--alert) 100%);transition:opacity .08s linear}
+
+/* HUD */
+#hud{position:fixed;inset:0;pointer-events:none;display:flex;flex-direction:column;justify-content:space-between;
+  padding-block:calc(env(safe-area-inset-top,0px) + 16px) calc(env(safe-area-inset-bottom,0px) + 16px);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.hud-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.readouts{display:flex;flex-wrap:wrap;gap:8px;min-width:0}
+.readout,.guide,.hud-bottom{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.readout{padding:7px 12px 6px;display:flex;flex-direction:column;gap:2px;min-width:64px}
+.lbl{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.val{font-size:24px;font-weight:650;line-height:1.05;font-variant-numeric:tabular-nums;color:var(--text)}
+.val.hot{color:var(--alert)}
+/* Blinks while the post-respawn grace lasts. */
+#livesBox.grace{animation:blink .25s steps(1) infinite}
+@keyframes blink{50%{opacity:.35}}
+#map{width:144px;height:144px;flex:none;border-radius:var(--radius);border:1px solid var(--line);opacity:.92}
+.hud-right{display:flex;flex-direction:column;align-items:flex-end;gap:8px;flex:none}
+.guide{padding:9px 12px 10px;display:flex;flex-direction:column;gap:3px;width:144px;box-sizing:border-box}
+.guide span{display:block}
+.g-goal{font-size:14px;font-weight:600;line-height:1.25}
+.g-progress{font-size:13px;font-weight:600;color:var(--accent);font-variant-numeric:tabular-nums;white-space:pre-line;line-height:1.35}
+.g-rule{font-size:12px;color:var(--muted)}
+.hud-bottom-row{display:flex;justify-content:space-between;align-items:flex-end;gap:12px}
+.slots{display:flex;gap:8px}
+.slot{position:relative;width:64px;height:64px;box-sizing:border-box;border-radius:var(--radius);background:var(--panel);border:1px solid var(--line);
+  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);display:grid;place-items:center;--p:0;--tier:var(--tier-white)}
+.slot.selected{border:2px solid var(--accent)}
+.slot.empty .icon,.slot.empty .uses,.slot.empty .ring{visibility:hidden}
+.slot.white{--tier:var(--tier-white)}
+.slot.blue{--tier:var(--tier-blue)}
+.slot.gold{--tier:var(--tier-gold)}
+/* The spoil ring: drains clockwise as the item ages. */
+.slot .ring{position:absolute;inset:5px;border-radius:50%;background:conic-gradient(var(--tier) calc(var(--p) * 1turn),rgba(255,255,255,.12) 0);
+  -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 4px),#000 calc(100% - 3px));mask:radial-gradient(farthest-side,transparent calc(100% - 4px),#000 calc(100% - 3px))}
+.slot.spoiling .ring{animation:blink .5s steps(1) infinite}
+.slot .icon{width:30px;height:30px;color:var(--text)}
+.slot .icon svg{width:100%;height:100%;display:block}
+.slot .uses{position:absolute;right:6px;bottom:3px;font-size:13px;font-weight:700;font-variant-numeric:tabular-nums}
+.slot .key{position:absolute;left:7px;top:3px;font-size:10px;font-weight:700;color:var(--muted)}
+.hud-bottom{align-self:flex-start;display:flex;flex-direction:column;gap:6px;padding:9px 12px}
+.meter{display:flex;align-items:center;gap:10px}
+.meter .lbl{min-width:52px}
+.bar.xp{height:5px}
+.bar.xp i{background:var(--accent);width:0}
+.bar{width:160px;height:8px;border-radius:4px;background:rgba(255,255,255,.14);overflow:hidden}
+.bar i{display:block;height:100%;width:100%;border-radius:4px;background:var(--text)}
+.bar.tired i{background:var(--alert)}
+/* Effects running out (energy drink, ice cleats): small chips with seconds left. */
+.buffs{display:flex;gap:6px;flex-wrap:wrap}
+.buff{font-size:12px;font-weight:600;padding:2px 8px;border-radius:999px;background:rgba(255,255,255,.1);font-variant-numeric:tabular-nums}
+/* Energy drink: sprinting is free for a few seconds. */
+.bar.energized i{background:var(--energy);box-shadow:0 0 10px var(--energy)}
+.bar.energized{animation:energized .6s ease-in-out infinite alternate}
+@keyframes energized{to{box-shadow:0 0 8px var(--energy)}}
+#cross{position:fixed;left:50%;top:50%;width:6px;height:6px;margin:-3px 0 0 -3px;pointer-events:none;border-radius:50%;
+  background:rgba(255,255,255,.85);box-shadow:0 0 0 1.5px rgba(0,0,0,.45)}
+/* Keen ears: an arrow around the crosshair pointing at the nearest snake. */
+#keenArrow{position:fixed;left:50%;top:50%;width:0;height:0;pointer-events:none}
+/* What R does here (Broken house doors), just under the crosshair. */
+#prompt{position:fixed;left:50%;top:calc(50% + 26px);transform:translateX(-50%);pointer-events:none;font-size:14px;font-weight:600;
+  padding:4px 10px;border-radius:999px;background:var(--panel);border:1px solid var(--line);white-space:nowrap}
+#prompt kbd{font:inherit;font-weight:700;padding:0 6px;margin-right:2px;border-radius:5px;background:rgba(255,255,255,.16)}
+/* The flashlight's battery (Dark cave); gold, then blinking when it runs low. */
+.bar.light i{background:var(--tier-gold);width:100%}
+.bar.light.low i{animation:blink .5s steps(1) infinite}
+/* How far your noise carries (Ambush levels). */
+.bar.noise{height:5px}
+.bar.noise i{background:var(--text);width:0;transition:width .12s linear}
+#keenArrow::after{content:"";position:absolute;left:-9px;top:-92px;border:9px solid transparent;border-bottom:16px solid var(--alert);opacity:.85}
+/* Perk pick: three cards to choose from. */
+.perks{display:flex;flex-direction:column;gap:10px}
+.perk{display:flex;flex-direction:column;gap:3px;text-align:left;font:inherit;color:var(--text);background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:12px;padding:12px 14px;cursor:pointer}
+.perk:hover{background:rgba(255,255,255,.1);border-color:var(--accent)}
+.perk strong{font-size:16px}
+.perk span{font-size:14px;color:var(--muted)}
+/* Hit marker: the crosshair grows into a ring for a moment when a stone stuns the snake. */
+#cross.hit{animation:hitmark .35s ease-out}
+@keyframes hitmark{0%{transform:scale(3.2);background:transparent;box-shadow:0 0 0 2px var(--accent)}100%{transform:scale(1)}}
+.mini{pointer-events:auto;font:700 15px/1 var(--font);background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:var(--radius);padding:0 14px;min-height:48px;cursor:pointer}
+
+/* Touch controls */
+#stick{position:fixed;width:120px;height:120px;margin:-60px 0 0 -60px;border:1px solid var(--line);border-radius:50%;background:var(--panel);pointer-events:none}
+#stick i{position:absolute;left:50%;top:50%;width:46px;height:46px;margin:-23px 0 0 -23px;border-radius:50%;background:rgba(255,255,255,.7)}
+#sprintBtn{position:fixed;right:calc(max(16px,env(safe-area-inset-right,0px)) + 4px);bottom:calc(env(safe-area-inset-bottom,0px) + 70px);
+  width:84px;height:84px;border-radius:50%;font:700 15px/1 var(--font);letter-spacing:.06em;background:var(--panel-strong);color:var(--text);border:1px solid var(--line);touch-action:none}
+#sprintBtn.on{background:var(--accent);color:var(--accent-ink)}
+
+/* Menus */
+#overlay{position:fixed;inset:0;display:grid;place-items:center;overflow:auto;background:var(--veil);
+  padding-block:calc(env(safe-area-inset-top,0px) + 20px) calc(env(safe-area-inset-bottom,0px) + 20px);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));touch-action:auto}
+.card{width:min(440px,100%);box-sizing:border-box;background:var(--panel-strong);border:1px solid var(--line);border-radius:18px;
+  box-shadow:0 24px 60px rgba(0,0,0,.45);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  padding:28px 28px 24px;display:flex;flex-direction:column;gap:16px;color:var(--text)}
+.eyebrow{margin:0;font-size:12px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+h1,h2{margin:0;font-family:var(--font);font-weight:800;color:var(--text);text-wrap:balance;line-height:.95;letter-spacing:-.02em}
+h1{font-size:clamp(44px,12vw,68px)}
+h2{font-size:clamp(32px,9vw,44px)}
+.lede{margin:0;max-width:36ch;color:var(--muted)}
+.keys{margin:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px 14px}
+.keys div{display:flex;align-items:center;gap:10px}
+.keys dt{font-size:12px;font-weight:700;border:1px solid var(--line);border-radius:6px;background:rgba(255,255,255,.06);padding:4px 7px;min-width:44px;text-align:center}
+.keys dd{margin:0;color:var(--muted)}
+.settings{display:flex;flex-direction:column;gap:14px}
+.setting{display:grid;grid-template-columns:1fr auto;align-items:baseline;gap:6px 10px}
+.setting output{font-size:15px;font-weight:600;font-variant-numeric:tabular-nums}
+.setting input,.setting select{grid-column:1 / -1;width:100%;margin:0;accent-color:var(--accent);min-height:28px;cursor:pointer}
+.setting select{font:inherit;color:var(--text);background:rgba(255,255,255,.06);border:1px solid var(--line);border-radius:8px;padding:8px 10px;min-height:40px}
+.setting select option{background:#1b211d}
+.setting input:focus-visible,.setting select:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.btn{font:700 15px/1 var(--font);letter-spacing:.02em;background:var(--accent);color:var(--accent-ink);border:1px solid transparent;border-radius:10px;padding:14px 20px;cursor:pointer;min-height:48px;transition:filter .12s,transform .06s}
+.btn:hover{filter:brightness(1.08)}
+.btn:active{transform:translateY(1px)}
+.btn.ghost{background:transparent;color:var(--text);border-color:var(--line)}
+.btn.ghost:hover{background:rgba(255,255,255,.07)}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.best{margin:0;font-size:14px;color:var(--muted)}
+.best span{color:var(--text);font-weight:600;font-variant-numeric:tabular-nums}
+.stats{margin:0;display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.stats div{border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.04);padding:9px 12px 8px;display:flex;flex-direction:column;gap:3px}
+.stats dt{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.stats dd{margin:0;font-size:26px;font-weight:700;line-height:1.1;font-variant-numeric:tabular-nums}
+.flag{margin:0;font-size:13px;font-weight:700;letter-spacing:.04em;color:var(--accent-ink);background:var(--accent);border-radius:999px;padding:6px 12px;align-self:flex-start}
+
+@media (max-width:640px){
+  .val{font-size:19px}
+  .readout{min-width:52px;padding:5px 9px 4px}
+  #map{width:96px;height:96px}
+  .guide{width:96px;padding:6px 8px}
+  .g-goal{font-size:12px}
+  .hud-bottom-row{align-items:flex-end}
+  .slot{width:52px;height:52px}
+  .bar{width:110px}
+  .card{padding:22px 18px 18px}
+}
+@media (prefers-reduced-motion:reduce){#cross.hit{animation:none}#danger{transition:none}#livesBox.grace{animation:none;text-decoration:underline}.slot.spoiling .ring{animation:none}.bar.energized{animation:none}.bar.light.low i{animation:none}.btn{transition:none}}
+[hidden]{display:none!important}
