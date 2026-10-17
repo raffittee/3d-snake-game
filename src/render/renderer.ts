@@ -7,7 +7,15 @@ import type { World } from '../sim/types';
 import { buildArena, disposeArena } from './arena';
 import { LayoutViews } from './layoutViews';
 import { loadSky } from './assets';
-import { DropViews, StoneViews } from './drops';
+import { DropViews, ItemEffects, StoneViews } from './drops';
+import { CornField } from './corn';
+import { GrassField } from './grass';
+import { SwampViews } from './swamp';
+import { BurrowMounds, Sandstorm } from './desert';
+import { MongooseViews } from './mongoose';
+import { IceViews } from './ice';
+import { HouseViews } from './house';
+import { CaveViews } from './cave';
 import type { Palette } from './palette';
 import { PelletViews } from './pellets';
 import { SnakeViews } from './snakes';
@@ -37,6 +45,8 @@ const MENU_ORBIT_MAX = 34;
 /** On the death camera you end up this far in front of the snake's open jaws. */
 const DEATH_CAM_DISTANCE = 3;
 const SHADOW_MAP_SIZE = 2048;
+/** The flashlight's strength (candela) with a charged battery (Dark cave). */
+const FLASHLIGHT = 110;
 /** Body rings per segment: smoother at high quality. */
 const RINGS_PER_SEGMENT: Record<Quality, number> = { high: 7, low: 4 };
 /** Device pixel ratio cap per quality, before the render scale setting. */
@@ -57,6 +67,18 @@ export class GameRenderer {
   private readonly pellets: PelletViews;
   private readonly drops: DropViews;
   private readonly stones: StoneViews;
+  private readonly crackers: ItemEffects;
+  private grass: GrassField | null = null;
+  private corn: CornField | null = null;
+  private swamp: SwampViews | null = null;
+  private storm: Sandstorm | null = null;
+  private mounds: BurrowMounds | null = null;
+  private ice: IceViews | null = null;
+  private house: HouseViews | null = null;
+  private cave: CaveViews | null = null;
+  /** Physical units: candela; its light ends at 34 units. */
+  private readonly flashlight = new THREE.SpotLight('#fff1d8', FLASHLIGHT, 34, 0.48, 0.55, 1.3);
+  private mongooses = new MongooseViews();
   private readonly viewmodel = new Viewmodel();
   private look: TerrainLook = terrainLook('plains');
   private world: World | null = null;
@@ -80,7 +102,16 @@ export class GameRenderer {
     this.pellets = new PelletViews(this.scene);
     this.drops = new DropViews(this.scene, palette.tiers);
     this.stones = new StoneViews(this.scene);
+    this.crackers = new ItemEffects(this.scene);
     this.camera.rotation.order = 'YXZ';
+    // The flashlight (Dark cave): a beam from just below and right of your eye, where you look.
+    this.flashlight.position.set(0.25, -0.25, 0);
+    this.flashlight.target.position.set(0, 0, -1);
+    this.flashlight.visible = false;
+    this.flashlight.shadow.mapSize.set(1024, 1024);
+    this.flashlight.shadow.bias = -0.0005;
+    this.camera.add(this.flashlight, this.flashlight.target);
+    this.scene.add(this.camera);
     this.applyLook();
     this.setQuality(quality);
   }
@@ -104,6 +135,7 @@ export class GameRenderer {
     this.renderer.shadowMap.enabled = high;
     this.sun.castShadow = high;
     this.scene.environment = high ? this.envMap : null;
+    this.swamp?.setEnvironment(this.scene.environment);
     this.viewmodel.scene.environment = this.scene.environment;
     this.hemi.intensity = high ? this.look.hemi.intensity * 0.25 : this.look.hemi.intensity;
     if (changed) {
@@ -131,29 +163,61 @@ export class GameRenderer {
     this.pellets.sync(world, dt);
     this.drops.sync(world, dt);
     this.stones.sync(world);
+    this.crackers.sync(world, dt, now);
+    this.grass?.update(world, dt, now);
+    this.corn?.update(now);
+    this.swamp?.update(now);
+    this.mounds?.update(world, now);
+    this.mongooses.update(world, dt, now);
     this.layout?.update(world, dt, now);
     this.placeSnake(world, view, dt, now);
     this.updateCamera(world, view, dt, now);
+    if (this.storm && this.scene.fog instanceof THREE.Fog) this.storm.update(world, this.scene.fog, this.camera, now);
+    this.ice?.update(this.camera, now);
+    this.house?.update(dt, now);
+    this.cave?.update(now);
+    if (this.flashlight.visible) {
+      // Low battery: the beam stutters. Empty: dark.
+      const b = world.battery;
+      const flicker = b < BALANCE.cave.batteryLow ? (Math.sin(now * 0.047) * Math.sin(now * 0.0131) > 0.35 ? 0.15 : 1) : 1;
+      this.flashlight.intensity = b > 0 ? FLASHLIGHT * flicker : 0;
+      this.viewmodel.setLight(b > 0 ? 0.55 * flicker : 0.08);
+    } else {
+      this.viewmodel.setLight(1);
+    }
     // Two passes: the world, then the first-person hands on top with a fresh depth buffer,
-    // so they never clip into rocks or the snake.
+    // so they never clip into rocks or the snake. A sandstorm's dust veil goes between them.
     this.renderer.clear();
     this.renderer.render(this.scene, this.camera);
+    if (this.storm && this.storm.strength > 0.01) this.renderer.render(this.storm.veilScene, this.storm.veilCamera);
     const p = world.player;
     this.viewmodel.update(world.inventory[world.selectedSlot] ?? null, view.mode === 'play', dt, view.bob, p.moving && p.y === 0 && !p.swimming, view.yaw, view.pitch, view.reducedMotion, p.swimming);
     this.renderer.clearDepth();
     this.renderer.render(this.viewmodel.scene, this.viewmodel.camera);
   }
 
-  /** How far the eye sits lower while swimming (eased in and out, with a gentle bob). */
+  /** How far the eye sits lower while swimming (eased in and out, with a gentle bob) or wading in mud. */
   private swimEase = 0;
-  private swimDrop(swimming: boolean, now: number): number {
+  private mudEase = 0;
+  private swimDrop(swimming: boolean, inMud: boolean, now: number): number {
     this.swimEase += ((swimming ? 1 : 0) - this.swimEase) * 0.12;
-    return this.swimEase * (BALANCE.river.swimEyeDrop + Math.sin(now * 0.003) * 0.05);
+    this.mudEase += ((inMud ? 1 : 0) - this.mudEase) * 0.1;
+    return this.swimEase * (BALANCE.river.swimEyeDrop + Math.sin(now * 0.003) * 0.05) + this.mudEase * BALANCE.swamp.mudEyeDrop;
   }
 
   /** Blood where a cut landed. */
   spray(x: number, z: number): void {
     this.snakes.spray(x, z);
+  }
+
+  /** A firecracker's bang: a flash and smoke. */
+  bang(x: number, z: number): void {
+    this.crackers.bang(x, z);
+  }
+
+  /** A smoke bomb's cloud around (x, z). */
+  smokeCloud(x: number, z: number, seconds: number): void {
+    this.crackers.cloud(x, z, seconds);
   }
 
   /** The hands play the selected item's use motion. */
@@ -171,8 +235,18 @@ export class GameRenderer {
     this.scene.background = new THREE.Color(look.fog.color);
     this.sun.color.set(look.sun.color);
     this.sun.intensity = look.sun.intensity;
+    // No sun (the cave): skip it, and its shadow pass, entirely.
+    this.sun.visible = look.sun.intensity > 0;
     this.hemi.color.set(look.hemi.sky);
     this.hemi.groundColor.set(look.hemi.ground);
+    if (look.noSky) {
+      // A cave: black beyond the fog, and no sky light at all (the previous level's must not linger).
+      this.envMap?.dispose();
+      this.envMap = null;
+      this.scene.environment = this.viewmodel.scene.environment = null;
+      this.swamp?.setEnvironment(null);
+      return;
+    }
     loadSky(look.sky)
       .then((hdr) => {
         if (look !== this.look) return;
@@ -182,6 +256,7 @@ export class GameRenderer {
         this.scene.backgroundIntensity = look.backgroundIntensity;
         this.scene.environmentIntensity = look.envIntensity;
         if (this.quality === 'high') this.scene.environment = this.viewmodel.scene.environment = this.envMap;
+        this.swamp?.setEnvironment(this.scene.environment);
       })
       .catch((err: unknown) => console.warn('Sky failed to load', err));
   }
@@ -199,10 +274,42 @@ export class GameRenderer {
     this.arena = buildArena(world, look);
     this.layout = new LayoutViews(world, look);
     this.arena.add(this.layout.group);
+    this.grass?.dispose();
+    this.grass = GrassField.build(world, look, this.quality);
+    if (this.grass) this.arena.add(this.grass.mesh);
+    this.corn?.dispose();
+    this.corn = CornField.build(world, look, this.quality);
+    if (this.corn) this.arena.add(this.corn.group);
+    this.swamp?.dispose();
+    this.swamp = SwampViews.build(world, look, this.quality);
+    this.swamp?.setEnvironment(this.scene.environment);
+    if (this.swamp) this.arena.add(this.swamp.group);
+    // Desert: sandstorms, and the heap of sand over a burrowing snake.
+    if (this.storm) this.scene.remove(this.storm.grains);
+    this.storm = world.level.storm && look.storm ? new Sandstorm(look, this.quality) : null;
+    if (this.storm) this.scene.add(this.storm.grains);
+    this.mounds?.dispose();
+    this.mounds = world.level.snake.behavior === 'burrow' ? new BurrowMounds(look) : null;
+    if (this.mounds) this.arena.add(this.mounds.group);
+    this.ice?.dispose();
+    this.ice = IceViews.build(world, this.quality);
+    if (this.ice) this.arena.add(this.ice.group);
+    this.house?.dispose();
+    this.house = HouseViews.build(world, look, this.quality);
+    if (this.house) this.arena.add(this.house.group);
+    this.cave?.dispose();
+    this.cave = CaveViews.build(world, look);
+    if (this.cave) this.arena.add(this.cave.group);
+    this.flashlight.visible = !!world.level.flashlight;
+    this.flashlight.castShadow = !!world.level.flashlight && this.quality === 'high';
+    // Fresh per world: mongoose ids start again at 1 in each level.
+    this.mongooses = new MongooseViews();
+    this.arena.add(this.mongooses.group);
     this.scene.add(this.arena);
     this.fitSunToArena(world);
     this.pellets.clear();
     this.drops.clear();
+    this.crackers.clear();
     this.snakes.clear();
   }
 
@@ -273,7 +380,7 @@ export class GameRenderer {
     const sink = view.mode === 'dead' ? Math.min(0.4, view.deathT) : 0;
     this.camera.position.set(
       camX + (Math.random() - 0.5) * shake,
-      BALANCE.player.eyeHeight + player.y + bob + (Math.random() - 0.5) * shake - sink - this.swimDrop(player.swimming, now),
+      BALANCE.player.eyeHeight + player.y + bob + (Math.random() - 0.5) * shake - sink - this.swimDrop(player.swimming, player.inMud && player.y <= 0, now),
       camZ + (Math.random() - 0.5) * shake,
     );
     this.camera.rotation.set(view.pitch, view.yaw, 0);

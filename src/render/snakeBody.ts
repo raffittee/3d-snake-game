@@ -42,6 +42,11 @@ const GROUND_CLEARANCE = 0.02;
 const SLITHER_AMPLITUDE = 0.035;
 const SLITHER_WAVELENGTH = 3;
 const TIP_RADIUS = 0.02;
+/**
+ * In tall grass (BALANCE.grass.height 1.4) the body keeps low: its height scales by this, so the
+ * top sits near 1.05, under the grass. Drawing only: its collision box stays as tall.
+ */
+export const LOW_BODY_SCALE = 0.55;
 
 const smooth = (e0: number, e1: number, x: number): number => {
   const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
@@ -145,8 +150,18 @@ export class SnakeBody {
   /**
    * Rebuild the body. `materialHead` is how many segments of body have moved past a fixed point
    * (it grows by one per snake step); texture coordinates follow it, so the scales travel with the body.
+   * `low` (optional, one per segment, 0..1): how far each segment keeps low in tall grass.
+   * `sink` (optional, one per segment, 0..1): how far each segment is down under the sand (Burrow).
    */
-  update(pos: Vec2[], materialHead: number, front: FrontEnd = 'head', back: BackEnd = 'tail', jumpable: number = BALANCE.snake.jumpableTail): void {
+  update(
+    pos: Vec2[],
+    materialHead: number,
+    front: FrontEnd = 'head',
+    back: BackEnd = 'tail',
+    jumpable: number = BALANCE.snake.jumpableTail,
+    low?: Float32Array,
+    sink?: Float32Array,
+  ): void {
     const length = pos.length;
     if (length < 2) {
       this.geometry.setDrawRange(0, 0);
@@ -214,11 +229,25 @@ export class SnakeBody {
       // Side vector (horizontal, perpendicular to the tangent).
       const sx = tz;
       const sz = -tx;
-      const [hw, hh] = this.profile(s, length, sEnd, front, back, jumpable);
+      const [hw, hhFull] = this.profile(s, length, sEnd, front, back, jumpable);
+      let hh = hhFull;
+      if (low) {
+        const i0 = Math.min(length - 1, Math.max(0, Math.floor(s)));
+        const i1 = Math.min(length - 1, i0 + 1);
+        const f = Math.min(1, Math.max(0, s - i0));
+        hh *= 1 - (1 - LOW_BODY_SCALE) * (low[i0] + (low[i1] - low[i0]) * f);
+      }
       const sway = SLITHER_AMPLITUDE * (hw / BODY_HALF_W) * smooth(0.5, 2, s) * Math.sin(((materialHead - s) / SLITHER_WAVELENGTH) * Math.PI * 2);
       const ox = cx[r] + sx * sway;
       const oz = cz[r] + sz * sway;
-      const oy = hh * BELLY_FLAT + GROUND_CLEARANCE;
+      let oy = hh * BELLY_FLAT + GROUND_CLEARANCE;
+      if (sink) {
+        // Under the sand: the whole cross-section goes below the ground (the ground hides it).
+        const i0 = Math.min(length - 1, Math.max(0, Math.floor(s)));
+        const i1 = Math.min(length - 1, i0 + 1);
+        const f = Math.min(1, Math.max(0, s - i0));
+        oy -= (sink[i0] + (sink[i1] - sink[i0]) * f) * (hh * (1 + BELLY_FLAT) + 0.3);
+      }
       const u = (materialHead - s) / SKIN_TILE_SEGMENTS;
       for (let j = 0; j < RING; j++) {
         const th = (j / RADIAL) * Math.PI * 2;

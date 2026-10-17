@@ -17,6 +17,18 @@ export interface Palette {
   relic: string;
   water: string;
   bridge: string;
+  grass: string;
+  corn: string;
+  mud: string;
+  log: string;
+  pad: string;
+  ice: string;
+  crackedIce: string;
+  hole: string;
+  houseWall: string;
+  doorShut: string;
+  doorOpen: string;
+  closet: string;
 }
 
 export function readPalette(): Palette {
@@ -36,5 +48,17 @@ export function readPalette(): Palette {
     relic: css('--map-relic'),
     water: css('--map-water'),
     bridge: css('--map-bridge'),
+    grass: css('--map-grass'),
+    corn: css('--map-corn'),
+    mud: css('--map-mud'),
+    log: css('--map-log'),
+    pad: css('--map-pad'),
+    ice: css('--map-ice'),
+    crackedIce: css('--map-cracked'),
+    hole: css('--map-hole'),
+    houseWall: css('--map-housewall'),
+    doorShut: css('--map-door-shut'),
+    doorOpen: css('--map-door-open'),
+    closet: css('--map-closet'),
   };
 }

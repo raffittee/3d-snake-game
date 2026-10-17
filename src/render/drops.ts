@@ -1,7 +1,19 @@
 import * as THREE from 'three';
 import { BALANCE } from '../config/balance';
 import type { ItemId, Tier, World } from '../sim/types';
-import { macheteModel, swimRingModel } from './itemModels';
+import {
+  FUSE_TIP,
+  batteryModel,
+  energyDrinkModel,
+  firecrackerModel,
+  iceCleatsModel,
+  macheteModel,
+  mongooseCageModel,
+  smokeBombModel,
+  sparkTexture,
+  swimRingModel,
+} from './itemModels';
+import { mongooseModel } from './mongoose';
 
 const HOVER_Y = 0.9;
 
@@ -76,7 +88,227 @@ function swimRingDrop(): THREE.Group {
   return g;
 }
 
-const MODELS: Record<ItemId, () => THREE.Group> = { slingshot: slingshotModel, machete: macheteDrop, swimRing: swimRingDrop };
+/** The firecracker lying in the arena: scaled up so it reads from a distance, tipped over. */
+function firecrackerDrop(): THREE.Group {
+  const g = new THREE.Group();
+  const m = firecrackerModel();
+  m.scale.setScalar(4.6);
+  m.rotation.z = 0.9;
+  g.add(m);
+  return g;
+}
+
+/** The smoke bomb lying in the arena, scaled up to read from a distance. */
+function smokeBombDrop(): THREE.Group {
+  const g = new THREE.Group();
+  const m = smokeBombModel();
+  m.scale.setScalar(4.2);
+  m.rotation.z = 0.35;
+  g.add(m);
+  return g;
+}
+
+/** The energy drink lying in the arena, scaled up to read from a distance. */
+function energyDrinkDrop(): THREE.Group {
+  const g = new THREE.Group();
+  const m = energyDrinkModel();
+  m.scale.setScalar(4.4);
+  g.add(m);
+  return g;
+}
+
+/** The mongoose's cage lying in the arena, with the animal inside; scaled up to read from a distance. */
+function mongooseDrop(): THREE.Group {
+  const g = new THREE.Group();
+  const inside = mongooseModel().group;
+  inside.scale.setScalar(0.25);
+  inside.position.y = -0.08;
+  const cage = mongooseCageModel(inside).group;
+  cage.scale.setScalar(3.4);
+  g.add(cage);
+  return g;
+}
+
+/** The ice cleats lying in the arena, standing up a little so they read, scaled up. */
+function iceCleatsDrop(): THREE.Group {
+  const g = new THREE.Group();
+  const m = iceCleatsModel();
+  m.scale.setScalar(3.6);
+  m.rotation.x = -0.9;
+  g.add(m);
+  return g;
+}
+
+/** The battery lying in the cave, standing up, scaled up to read (and glinting in the beam). */
+function batteryDrop(): THREE.Group {
+  const g = new THREE.Group();
+  const m = batteryModel();
+  m.scale.setScalar(7);
+  g.add(m);
+  return g;
+}
+
+const MODELS: Record<ItemId, () => THREE.Group> = {
+  battery: batteryDrop,
+  iceCleats: iceCleatsDrop,
+  mongoose: mongooseDrop,
+  energyDrink: energyDrinkDrop,
+  slingshot: slingshotModel,
+  machete: macheteDrop,
+  swimRing: swimRingDrop,
+  firecracker: firecrackerDrop,
+  smokeBomb: smokeBombDrop,
+};
+
+/** Firecracker size in the world (the hand model is real size; this reads better at a distance). */
+const CRACKER_SCALE = 3;
+/** Seconds the smoke of a bang hangs before it is gone. */
+const SMOKE_LIFE = 2.4;
+
+/** Puffs of smoke (a bang, or a smoke bomb's cloud), with an optional flash at the start. */
+interface Burst {
+  flash: THREE.Sprite | null;
+  smoke: Array<{ sprite: THREE.Sprite; vx: number; vy: number; vz: number }>;
+  age: number;
+  life: number;
+  /** Puff size at the start, and how fast it grows (units per second). */
+  size: number;
+  grow: number;
+  opacity: number;
+}
+
+/**
+ * Thrown things and what they leave: firecrackers tumbling in flight, lying with a sputtering fuse,
+ * then a bang (a flash and puffs of smoke); a smoke bomb's thick cloud. Pools are filled from world
+ * state each frame; bursts are started by the game when it sees a `firecrackerBang` or `smokeBomb` event.
+ */
+export class ItemEffects {
+  private readonly sparkMat = new THREE.SpriteMaterial({ map: sparkTexture(), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
+  private readonly flashMat = new THREE.SpriteMaterial({ map: sparkTexture(), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
+  private readonly smokeTex = glowTexture();
+  private readonly flying: THREE.Group[] = [];
+  private readonly lying: Array<{ group: THREE.Group; spark: THREE.Sprite }> = [];
+  private readonly bursts: Burst[] = [];
+  private spin = 0;
+
+  constructor(private readonly scene: THREE.Scene) {}
+
+  private cracker(): THREE.Group {
+    const g = new THREE.Group();
+    const m = firecrackerModel();
+    m.scale.setScalar(CRACKER_SCALE);
+    g.add(m);
+    this.scene.add(g);
+    return g;
+  }
+
+  sync(world: World, dt: number, now: number): void {
+    this.spin += dt * 9;
+    let f = 0;
+    for (const p of world.projectiles) {
+      if (p.kind !== 'firecracker') continue;
+      const g = this.flying[f] ?? this.cracker();
+      this.flying[f++] = g;
+      g.visible = true;
+      g.position.set(p.x, p.y, p.z);
+      g.rotation.set(this.spin, this.spin * 0.6, 0);
+    }
+    for (let i = f; i < this.flying.length; i++) this.flying[i].visible = false;
+
+    world.firecrackers.forEach((c, i) => {
+      let v = this.lying[i];
+      if (!v) {
+        const group = this.cracker();
+        const spark = new THREE.Sprite(this.sparkMat);
+        group.add(spark);
+        v = { group, spark };
+        this.lying[i] = v;
+      }
+      v.group.visible = true;
+      // On its side on the ground, the fuse end up a little.
+      v.group.position.set(c.x, 0.05, c.z);
+      v.group.rotation.set(0, i * 2.1, Math.PI / 2 - 0.15);
+      const tip = FUSE_TIP.clone().multiplyScalar(CRACKER_SCALE);
+      v.spark.position.copy(tip);
+      // The fuse burns down: the spark sputters, brighter as it gets close.
+      const k = 1 - Math.max(0, c.fuse / c.total);
+      v.spark.scale.setScalar((0.25 + 0.2 * k) * (0.75 + 0.5 * Math.abs(Math.sin(now * 0.05 + i))));
+    });
+    for (let i = world.firecrackers.length; i < this.lying.length; i++) this.lying[i].group.visible = false;
+
+    for (let i = this.bursts.length - 1; i >= 0; i--) {
+      const b = this.bursts[i];
+      b.age += dt;
+      if (b.flash) {
+        const k = b.age / 0.2;
+        b.flash.visible = k < 1;
+        b.flash.scale.setScalar(2 + k * 10);
+        b.flash.material.opacity = Math.max(0, 1 - k);
+      }
+      // Thick at first, thinning out over the last third of its life.
+      const fade = Math.min(1, (1 - b.age / b.life) * 3);
+      for (const s of b.smoke) {
+        s.sprite.position.x += s.vx * dt;
+        s.sprite.position.y += s.vy * dt;
+        s.sprite.position.z += s.vz * dt;
+        s.vx *= 1 - dt * 1.5;
+        s.vz *= 1 - dt * 1.5;
+        s.sprite.scale.setScalar(b.size + b.age * b.grow);
+        s.sprite.material.opacity = Math.max(0, b.opacity * fade);
+      }
+      if (b.age > b.life) {
+        this.scene.remove(...b.smoke.map((s) => s.sprite));
+        if (b.flash) {
+          this.scene.remove(b.flash);
+          b.flash.material.dispose();
+        }
+        for (const s of b.smoke) s.sprite.material.dispose();
+        this.bursts.splice(i, 1);
+      }
+    }
+  }
+
+  /** The bang at (x, z): a flash and a few puffs of smoke. */
+  bang(x: number, z: number): void {
+    const flash = new THREE.Sprite(this.flashMat.clone());
+    flash.position.set(x, 0.6, z);
+    this.scene.add(flash);
+    const smoke: Burst['smoke'] = [];
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Math.PI * 2 + Math.random();
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.smokeTex, color: '#7d7a72', transparent: true, depthWrite: false, opacity: 0.75 }));
+      sprite.position.set(x, 0.4 + Math.random() * 0.4, z);
+      this.scene.add(sprite);
+      smoke.push({ sprite, vx: Math.cos(a) * 2.2, vy: 0.7 + Math.random() * 0.6, vz: Math.sin(a) * 2.2 });
+    }
+    this.bursts.push({ flash, smoke, age: 0, life: SMOKE_LIFE, size: 2, grow: 3, opacity: 0.75 });
+  }
+
+  /** A smoke bomb at (x, z): a thick pale cloud that billows out around you and hangs for `seconds`. */
+  cloud(x: number, z: number, seconds: number): void {
+    const smoke: Burst['smoke'] = [];
+    for (let i = 0; i < 22; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = Math.random() * 1.5;
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.smokeTex, color: '#c9c8c2', transparent: true, depthWrite: false, opacity: 0.6 }));
+      sprite.position.set(x + Math.cos(a) * r, 0.3 + Math.random() * 1.6, z + Math.sin(a) * r);
+      this.scene.add(sprite);
+      const s = 0.9 + Math.random() * 1.4;
+      smoke.push({ sprite, vx: Math.cos(a) * s, vy: 0.08 + Math.random() * 0.2, vz: Math.sin(a) * s });
+    }
+    this.bursts.push({ flash: null, smoke, age: 0, life: seconds + 1, size: 2.4, grow: 0.7, opacity: 0.6 });
+  }
+
+  clear(): void {
+    for (const g of this.flying) g.visible = false;
+    for (const v of this.lying) v.group.visible = false;
+    for (const b of this.bursts) {
+      this.scene.remove(...b.smoke.map((s) => s.sprite));
+      if (b.flash) this.scene.remove(b.flash);
+    }
+    this.bursts.length = 0;
+  }
+}
 
 /** Slingshot stones in flight: a small pool of grey pebbles placed from world.projectiles each frame. */
 export class StoneViews {
@@ -88,7 +320,8 @@ export class StoneViews {
 
   sync(world: World): void {
     const r = BALANCE.items.defs.slingshot.stoneRadius;
-    world.projectiles.forEach((s, i) => {
+    const stones = world.projectiles.filter((p) => p.kind === 'stone');
+    stones.forEach((s, i) => {
       let m = this.pool.at(i);
       if (!m) {
         m = new THREE.Mesh(this.geo, this.mat);
@@ -100,7 +333,7 @@ export class StoneViews {
       m.visible = true;
       m.position.set(s.x, s.y, s.z);
     });
-    for (let i = world.projectiles.length; i < this.pool.length; i++) this.pool[i].visible = false;
+    for (let i = stones.length; i < this.pool.length; i++) this.pool[i].visible = false;
   }
 }
 
