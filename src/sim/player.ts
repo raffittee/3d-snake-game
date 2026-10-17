@@ -9,7 +9,14 @@ export const NO_INPUT: PlayerInput = { forward: 0, strafe: 0, sprint: false, jum
 
 /** A fresh player standing on `start`. The caller turns them to face the snake. */
 export function createPlayer(grid: Grid, start: Cell): PlayerState {
-  return { x: cellToWorld(grid, start.x), z: cellToWorld(grid, start.z), y: 0, vy: 0, yaw: 0, pitch: 0, stamina: 1, tired: false, moving: false, sprinting: false };
+  return { x: cellToWorld(grid, start.x), z: cellToWorld(grid, start.z), y: 0, vy: 0, vx: 0, vz: 0, swimming: false, yaw: 0, pitch: 0, stamina: 1, tired: false, moving: false, sprinting: false };
+}
+
+/** Speed multiplier from pellet boosts: each one fades linearly to nothing over the level's boost time. */
+export function boostScale(world: World): number {
+  const cfg = world.level.pelletBoost;
+  if (!cfg) return 1;
+  return 1 + world.boosts.reduce((sum, t) => sum + cfg.amount * Math.max(0, t / cfg.seconds), 0);
 }
 
 export function updatePlayer(world: World, input: PlayerInput, dt: number): void {
@@ -26,13 +33,14 @@ export function updatePlayer(world: World, input: PlayerInput, dt: number): void
     s /= len;
   }
   p.moving = len > cfg.moveDeadzone;
-  const sprint = input.sprint && p.moving && !p.tired && p.stamina > 0;
+  const sprint = input.sprint && p.moving && !p.tired && p.stamina > 0 && !p.swimming;
   p.sprinting = sprint;
   p.stamina = clamp(p.stamina + (sprint ? -cfg.staminaDrain * staminaDrainScale(world) : cfg.staminaRegen) * dt, 0, 1);
   if (p.stamina <= 0) p.tired = true;
   if (p.tired && p.stamina > cfg.tiredRecoverAt) p.tired = false;
 
-  const speed = sprint ? cfg.sprintSpeed : cfg.walkSpeed;
+  // Swimming: slow, no sprint. On land, pellet boosts (Riverside) add speed.
+  const speed = p.swimming ? cfg.walkSpeed * BALANCE.river.swimSpeed : (sprint ? cfg.sprintSpeed : cfg.walkSpeed) * boostScale(world);
   const sy = Math.sin(p.yaw);
   const cy = Math.cos(p.yaw);
   p.vx = (-sy * f + cy * s) * speed;

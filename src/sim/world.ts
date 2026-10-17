@@ -38,6 +38,7 @@ export function createWorld(level: LevelConfig, seed: number, perks: PerkId[] = 
     tiles: layout.tiles,
     relics: layout.relics,
     relicsFound: 0,
+    boosts: [],
     gate,
     gateOpen: false,
     player: createPlayer(grid, level.start),
@@ -155,6 +156,21 @@ function resolveCollisions(world: World): void {
   const { player, grid, pillars } = world;
   const r = BALANCE.player.radius;
   const jump = jumpableTail(world);
+  // Deep water: a wall unless you carry a swim ring with time left.
+  const canSwim = swimRingSlot(world) >= 0;
+  const wcx = worldToCell(grid, player.x);
+  const wcz = worldToCell(grid, player.z);
+  if (!canSwim) {
+    for (let dz = -1; dz <= 1; dz++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const x = wcx + dx;
+        const z = wcz + dz;
+        if (inBounds(grid, x, z) && world.tiles[z * grid.size + x] === Tile.Water) pushOut(player, r, cellToWorld(grid, x), cellToWorld(grid, z), grid.cell / 2);
+      }
+    }
+  }
+  const here = world.tiles[worldToCell(grid, player.z) * grid.size + worldToCell(grid, player.x)];
+  player.swimming = here === Tile.Water;
   // Walls (Ruins): a crumbling wall always blocks; a low wall only while you are below its top.
   const tcx = worldToCell(grid, player.x);
   const tcz = worldToCell(grid, player.z);
@@ -208,6 +224,9 @@ export function updateWorld(world: World, input: PlayerInput, dt: number): void 
   // A copy: a growth split adds a snake mid-loop, and it should first move next update.
   for (const snake of [...world.snakes]) {
     snake.interval = Math.max(cfg.minInterval, cfg.baseInterval - world.elapsed * cfg.rampPerSecond);
+    // It swims too, but slower.
+    const head = snake.cells[0];
+    if (world.tiles[head.z * world.grid.size + head.x] === Tile.Water) snake.interval *= BALANCE.river.snakeSwimSlow;
     if (snake.stunTimer > 0) {
       // Stunned (or dazed after splitting off): frozen, no steps and no growth. Its body still blocks.
       snake.stunTimer = Math.max(0, snake.stunTimer - dt);
@@ -237,6 +256,7 @@ export function updateWorld(world: World, input: PlayerInput, dt: number): void 
       world.pellets.splice(i, 1);
       world.pelletsCollected++;
       world.xpGained += BALANCE.xp.perPellet;
+      if (world.level.pelletBoost) world.boosts.push(world.level.pelletBoost.seconds);
       world.events.push({ type: 'pelletCollected' });
       spawnPellet(world);
     }
@@ -252,11 +272,42 @@ export function updateWorld(world: World, input: PlayerInput, dt: number): void 
   updateItems(world, input, dt);
   updateProjectiles(world, dt);
   pickUpRelics(world);
+  updateSwimming(world, dt);
   if (world.status !== 'playing') return;
+  for (let i = world.boosts.length - 1; i >= 0; i--) {
+    world.boosts[i] -= dt;
+    if (world.boosts[i] <= 0) world.boosts.splice(i, 1);
+  }
 
   if (goalMet(world.level.goal, world)) {
     world.status = 'complete';
     world.events.push({ type: 'levelComplete' });
+  }
+}
+
+/** The first inventory slot holding a swim ring with time left, or -1. */
+function swimRingSlot(world: World): number {
+  return world.inventory.findIndex((h) => h !== null && h.item === 'swimRing' && h.uses > 0);
+}
+
+/**
+ * While you swim, the swim ring's seconds drain. Run out in deep water and you drown (a life).
+ * A spent ring is gone; with no ring left, the water pushes you back next update.
+ */
+function updateSwimming(world: World, dt: number): void {
+  if (!world.player.swimming) return;
+  const slot = swimRingSlot(world);
+  if (slot < 0) {
+    kill(world, 'drowned', null);
+    return;
+  }
+  const ring = world.inventory[slot];
+  if (!ring) return;
+  ring.uses = Math.max(0, ring.uses - dt);
+  if (ring.uses <= 0) {
+    world.inventory[slot] = null;
+    world.events.push({ type: 'itemSpoiled', slot, item: 'swimRing' });
+    if (swimRingSlot(world) < 0) kill(world, 'drowned', null);
   }
 }
 

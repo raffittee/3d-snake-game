@@ -22,6 +22,8 @@ export interface PlayerState {
   /** Height of the feet above the floor, and vertical speed. 0 and 0 when standing. */
   y: number;
   vy: number;
+  /** In deep water (only possible with a swim ring). */
+  swimming: boolean;
   /** Horizontal velocity this frame (units/s), for the Predict snake. */
   vx: number;
   vz: number;
@@ -150,7 +152,7 @@ export interface Pellet {
   z: number;
 }
 
-export type DeathCause = 'caught' | 'crushed';
+export type DeathCause = 'caught' | 'crushed' | 'drowned';
 
 /** Things that happened this frame. The game layer turns them into sound and UI. */
 export type SimEvent =
@@ -186,6 +188,8 @@ export interface World {
   pillars: Uint8Array;
   /** Ground type per cell (sim/tiles.ts): low walls, crumbling walls, water, bridges. */
   tiles: Uint8Array;
+  /** Riverside: seconds left on each pellet speed boost (they stack). */
+  boosts: number[];
   /** Relics still lying in the level, and how many were found. */
   relics: Cell[];
   relicsFound: number;

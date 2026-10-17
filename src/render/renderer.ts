@@ -144,6 +144,13 @@ export class GameRenderer {
     this.renderer.render(this.viewmodel.scene, this.viewmodel.camera);
   }
 
+  /** How far the eye sits lower while swimming (eased in and out, with a gentle bob). */
+  private swimEase = 0;
+  private swimDrop(swimming: boolean, now: number): number {
+    this.swimEase += ((swimming ? 1 : 0) - this.swimEase) * 0.12;
+    return this.swimEase * (BALANCE.river.swimEyeDrop + Math.sin(now * 0.003) * 0.05);
+  }
+
   /** Blood where a cut landed. */
   spray(x: number, z: number): void {
     this.snakes.spray(x, z);
@@ -266,7 +273,7 @@ export class GameRenderer {
     const sink = view.mode === 'dead' ? Math.min(0.4, view.deathT) : 0;
     this.camera.position.set(
       camX + (Math.random() - 0.5) * shake,
-      BALANCE.player.eyeHeight + player.y + bob + (Math.random() - 0.5) * shake - sink,
+      BALANCE.player.eyeHeight + player.y + bob + (Math.random() - 0.5) * shake - sink - this.swimDrop(player.swimming, now),
       camZ + (Math.random() - 0.5) * shake,
     );
     this.camera.rotation.set(view.pitch, view.yaw, 0);

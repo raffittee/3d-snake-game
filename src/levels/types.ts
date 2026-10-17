@@ -47,6 +47,8 @@ export interface LevelConfig {
   start: Cell;
   /** Ground layout; plain when omitted. */
   layout?: LevelLayout;
+  /** Riverside: each pellet adds a speed boost that fades out over `seconds`; boosts stack. */
+  pelletBoost?: { amount: number; seconds: number };
   /** The exit: the gate (Ruins) or the far dock (Riverside), a cell near the arena's edge. */
   gate?: Cell;
   /** Tall, always-visible shapes to find your way by. Each one fills its cell like a pillar. */

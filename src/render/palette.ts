@@ -15,6 +15,8 @@ export interface Palette {
   lowWall: string;
   crumble: string;
   relic: string;
+  water: string;
+  bridge: string;
 }
 
 export function readPalette(): Palette {
@@ -32,5 +34,7 @@ export function readPalette(): Palette {
     lowWall: css('--map-lowwall'),
     crumble: css('--map-crumble'),
     relic: css('--map-relic'),
+    water: css('--map-water'),
+    bridge: css('--map-bridge'),
   };
 }

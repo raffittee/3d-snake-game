@@ -108,6 +108,8 @@ export const BALANCE = {
         /** A swing cuts the snake segment under the crosshair within this distance from your eye. */
         reach: 2.6,
       },
+      /** Swim ring: `uses` are seconds in deep water; they drain only while you swim. */
+      swimRing: { uses: 30, spoilSeconds: 60 },
     },
   },
 
@@ -144,6 +146,17 @@ export const BALANCE = {
     /** Walk within this distance of a relic to pick it up, or of the open gate to leave. */
     relicPickupRadius: 1.1,
     gateRadius: 1.4,
+  },
+
+  river: {
+    /** The narrowest the river gets, in cells. */
+    minWidth: 5,
+    /** Swimming speed as a share of walking speed (no sprint, no jump in water). */
+    swimSpeed: 0.55,
+    /** The snake steps this much slower while its head is in water. */
+    snakeSwimSlow: 1.6,
+    /** Eye height while swimming (the water is around your chest). */
+    swimEyeDrop: 0.85,
   },
 
   ai: {
