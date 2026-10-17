@@ -104,8 +104,14 @@ export class Panels {
   }
 
   showDeath(s: DeathSummary): void {
-    $('deadCause').textContent = s.cause === 'crushed' ? 'Pinned against a wall' : s.cause === 'drowned' ? 'The swim ring ran out' : 'Caught by the head';
-    $('deadTitle').textContent = s.cause === 'crushed' ? 'Crushed' : s.cause === 'drowned' ? 'Drowned' : 'Eaten';
+    const words: Record<typeof s.cause, [string, string]> = {
+      caught: ['Eaten', 'Caught by the head'],
+      crushed: ['Crushed', 'Pinned against a wall'],
+      drowned: ['Drowned', 'The swim ring ran out'],
+      fell: ['Fell in', 'The ice gave way under you'],
+    };
+    $('deadTitle').textContent = words[s.cause][0];
+    $('deadCause').textContent = words[s.cause][1];
     $('deadReached').textContent = `Out of lives on Level ${s.levelNumber} (${s.levelName}). The run starts over at Level 1.`;
     $('dTime').textContent = formatTime(s.elapsed);
     $('dScore').textContent = String(s.score);

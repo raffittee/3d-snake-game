@@ -4,14 +4,15 @@ import { BALANCE } from '../config/balance';
 import { cellToWorld } from '../sim/grid';
 import { Tile } from '../sim/tiles';
 import type { World } from '../sim/types';
-import { pbrMaterial } from './assets';
+import { loadModel, pbrMaterial } from './assets';
+import { tuftGeometry } from './grass';
 import type { TerrainLook } from './terrains';
 
 const DUST_LIFE = 0.9;
 const DUST_PUFFS = 26;
 
 /** A box whose UVs are in world units / tile, so textures keep their real-world size. */
-function worldUvBox(w: number, h: number, d: number, tile: number): THREE.BoxGeometry {
+export function worldUvBox(w: number, h: number, d: number, tile: number): THREE.BoxGeometry {
   const g = new THREE.BoxGeometry(w, h, d);
   const uv = g.getAttribute('uv') as THREE.BufferAttribute;
   const faces: Array<[number, number]> = [[d, h], [d, h], [w, d], [w, d], [w, h], [w, h]];
@@ -65,7 +66,7 @@ class Dust {
 }
 
 /** A tiling normal map of soft ripples for water, made in code (sums of a few sine waves). */
-function waterNormalTexture(): THREE.CanvasTexture {
+export function waterNormalTexture(): THREE.CanvasTexture {
   const s = 256;
   const c = document.createElement('canvas');
   c.width = c.height = s;
@@ -130,6 +131,169 @@ function relicModel(stone: THREE.Material): THREE.Group {
   return g;
 }
 
+/** The corn maze's map: a weathered sheet pinned to a slanted board on a post, so it stands out at eye height. */
+function mapModel(wood: THREE.Material): THREE.Group {
+  const g = new THREE.Group();
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.08, 1.3, 8), wood);
+  post.position.y = 0.65;
+  g.add(post);
+  const board = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.8, 0.06), wood);
+  board.position.set(0, 1.4, 0);
+  board.rotation.x = -0.45;
+  g.add(board);
+  // The map itself: pale paper with faint drawn paths (made in code).
+  const c = document.createElement('canvas');
+  c.width = 128;
+  c.height = 96;
+  const x = c.getContext('2d');
+  if (x) {
+    x.fillStyle = '#e6dcc0';
+    x.fillRect(0, 0, 128, 96);
+    x.strokeStyle = '#8a6f45';
+    x.lineWidth = 3;
+    x.beginPath();
+    x.moveTo(10, 86);
+    x.lineTo(10, 50);
+    x.lineTo(50, 50);
+    x.lineTo(50, 20);
+    x.lineTo(96, 20);
+    x.lineTo(96, 60);
+    x.lineTo(118, 60);
+    x.moveTo(50, 50);
+    x.lineTo(80, 50);
+    x.lineTo(80, 86);
+    x.stroke();
+    x.fillStyle = '#9b3b2a';
+    x.beginPath();
+    x.arc(118, 60, 4, 0, Math.PI * 2);
+    x.fill();
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const paper = new THREE.Mesh(new THREE.PlaneGeometry(0.94, 0.66), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9 }));
+  // Just in front of the board's face (the board is tipped back, so the offset follows its tilt).
+  paper.position.set(0, 1.4 + Math.sin(0.45) * 0.035, Math.cos(0.45) * 0.035);
+  paper.rotation.x = -0.45;
+  g.add(paper);
+  g.traverse((o) => {
+    if (o instanceof THREE.Mesh) o.castShadow = true;
+  });
+  return g;
+}
+
+/** A signal lantern on a post (Swamp). `glass` is its own material, so lighting it changes only this one. */
+function lanternModel(wood: THREE.Material): { group: THREE.Group; glass: THREE.MeshStandardMaterial } {
+  const g = new THREE.Group();
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 2.4, 8), wood);
+  post.position.y = 1.2;
+  g.add(post);
+  const arm = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.08, 0.08), wood);
+  arm.position.set(0.26, 2.3, 0);
+  g.add(arm);
+  const iron = new THREE.MeshStandardMaterial({ color: '#2a2a28', metalness: 0.6, roughness: 0.55 });
+  const glass = new THREE.MeshStandardMaterial({ color: '#3a3a30', emissive: '#ffb04a', emissiveIntensity: 0, roughness: 0.2, metalness: 0 });
+  const frame = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.06, 0.3), iron);
+  frame.position.set(0.48, 2.0, 0);
+  const top = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.18, 4), iron);
+  top.position.set(0.48, 2.18, 0);
+  top.rotation.y = Math.PI / 4;
+  const pane = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.3, 0.24), glass);
+  pane.position.set(0.48, 1.82, 0);
+  const base = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.05, 0.3), iron);
+  base.position.set(0.48, 1.65, 0);
+  g.add(frame, top, pane, base);
+  g.traverse((o) => {
+    if (o instanceof THREE.Mesh) o.castShadow = true;
+  });
+  return { group: g, glass };
+}
+
+/** A water flask (Desert): a round, flat canteen in a leather cover with a cap and strap, propped on a stone. */
+function flaskModel(stone: THREE.Material): THREE.Group {
+  const g = new THREE.Group();
+  const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(0.42, 0), stone);
+  rock.scale.set(1, 0.45, 0.85);
+  rock.position.y = 0.16;
+  g.add(rock);
+  const leather = new THREE.MeshStandardMaterial({ color: '#7a5634', roughness: 0.75 });
+  const metal = new THREE.MeshStandardMaterial({ color: '#b8bcbf', metalness: 0.85, roughness: 0.3 });
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.14, 24), leather);
+  body.rotation.x = Math.PI / 2;
+  body.position.set(0, 0.62, 0);
+  body.rotation.z = 0.15;
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.055, 0.1, 12), metal);
+  neck.position.set(0.04, 0.95, 0);
+  const strap = new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.018, 6, 30), leather);
+  strap.position.set(0, 0.62, 0);
+  strap.rotation.y = Math.PI / 2;
+  g.add(body, neck, strap);
+  g.traverse((o) => {
+    if (o instanceof THREE.Mesh) o.castShadow = true;
+  });
+  return g;
+}
+
+/** The front-door key (Broken house): a big brass key lying on a small wooden side table. */
+function keyModel(wood: THREE.Material): THREE.Group {
+  const g = new THREE.Group();
+  const top = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.05, 20), wood);
+  top.position.y = 0.78;
+  const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, 0.76, 10), wood);
+  leg.position.y = 0.38;
+  const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.26, 0.04, 16), wood);
+  g.add(top, leg, foot);
+  const brass = new THREE.MeshStandardMaterial({ color: '#c9a043', metalness: 0.9, roughness: 0.3, emissive: '#3a2a08', emissiveIntensity: 0.4 });
+  const key = new THREE.Group();
+  const bow = new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.018, 8, 20), brass);
+  bow.rotation.x = Math.PI / 2;
+  bow.position.x = -0.16;
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.3, 8), brass);
+  shaft.rotation.z = Math.PI / 2;
+  shaft.position.x = 0.04;
+  const bit = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.012, 0.07), brass);
+  bit.position.set(0.16, 0, 0.04);
+  key.add(bow, shaft, bit);
+  key.position.y = 0.83;
+  key.rotation.y = 0.6;
+  g.add(key);
+  g.traverse((o) => {
+    if (o instanceof THREE.Mesh) o.castShadow = true;
+  });
+  return g;
+}
+
+/** A small wooden rowboat (Swamp's exit), bow toward -z, about 3.4 long. */
+function boatModel(planks: THREE.Material, dark: THREE.Material): THREE.Group {
+  const g = new THREE.Group();
+  const s = new THREE.Shape();
+  s.moveTo(0, -1.7);
+  s.quadraticCurveTo(0.75, -1.1, 0.72, 0.4);
+  s.quadraticCurveTo(0.7, 1.5, 0.45, 1.7);
+  s.lineTo(-0.45, 1.7);
+  s.quadraticCurveTo(-0.7, 1.5, -0.72, 0.4);
+  s.quadraticCurveTo(-0.75, -1.1, 0, -1.7);
+  const hullGeo = new THREE.ExtrudeGeometry(s, { depth: 0.55, bevelEnabled: true, bevelThickness: 0.05, bevelSize: 0.05, bevelSegments: 2, curveSegments: 12 });
+  // The shape is in x/y; lay it flat (y becomes -z) and narrow the bottom so the hull is a V.
+  hullGeo.rotateX(Math.PI / 2);
+  const pos = hullGeo.getAttribute('position') as THREE.BufferAttribute;
+  for (let i = 0; i < pos.count; i++) {
+    const y = pos.getY(i);
+    const k = 1 - Math.min(1, Math.max(0, y / 0.55)) * 0.45;
+    pos.setX(i, pos.getX(i) * k);
+    pos.setY(i, 0.55 - y);
+  }
+  hullGeo.computeVertexNormals();
+  const hull = new THREE.Mesh(hullGeo, planks);
+  hull.castShadow = hull.receiveShadow = true;
+  g.add(hull);
+  for (const z of [-0.4, 0.7]) {
+    const seat = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.06, 0.32), dark);
+    seat.position.set(0, 0.42, z);
+    g.add(seat);
+  }
+  return g;
+}
+
 /**
  * Ground features that change as you play (Ruins): low walls (static, merged), crumbling walls
  * (removed when the snake smashes them, with dust), relics (removed when picked), and the gate
@@ -141,6 +305,9 @@ export class LayoutViews {
   private readonly relics = new Map<string, THREE.Group>();
   private doors: THREE.Group[] = [];
   private gateGlow: THREE.Sprite | null = null;
+  private boatLamp: THREE.MeshStandardMaterial | null = null;
+  private oasis = false;
+  private readonly lanterns = new Map<string, { glass: THREE.MeshStandardMaterial; glow: THREE.Sprite; lit: boolean }>();
   private doorOpen = 0;
   private readonly dust: Dust[] = [];
   private readonly puff = puffTexture();
@@ -181,11 +348,36 @@ export class LayoutViews {
     }
 
     const stone = pbrMaterial(lowSet, '#bdb6a6');
-    for (const r of world.relics) {
-      const m = relicModel(stone);
+    const isMap = world.level.goal.kind === 'mapThenExit';
+    const goal = world.level.goal;
+    if (goal.kind === 'relicsThenGate' && goal.relic === 'lantern') {
+      // Signal lanterns: they stay standing; lighting one turns its glass on and adds a glow.
+      const wood = pbrMaterial(look.planks ?? look.wall, '#6d5a48');
+      for (const r of world.relics) {
+        const l = lanternModel(wood);
+        l.group.position.set(cellToWorld(grid, r.x), 0, cellToWorld(grid, r.z));
+        l.group.rotation.y = jitter(r.x * 64 + r.z, 5) * Math.PI * 2;
+        const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: '#ffc46a', blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0 }));
+        glow.position.set(0.48, 1.82, 0);
+        glow.scale.setScalar(1.5);
+        l.group.add(glow);
+        this.lanterns.set(`${r.x},${r.z}`, { glass: l.glass, glow, lit: false });
+        this.group.add(l.group);
+      }
+    }
+    const isFlask = goal.kind === 'relicsThenGate' && goal.relic === 'flask';
+    const isKey = goal.kind === 'relicsThenGate' && goal.relic === 'key';
+    for (const r of this.lanterns.size ? [] : world.relics) {
+      const m = isMap
+        ? mapModel(pbrMaterial(look.wall, '#8a7560'))
+        : isFlask
+          ? flaskModel(pbrMaterial(look.pillar, look.pillarTint))
+          : isKey
+            ? keyModel(pbrMaterial(look.planks ?? look.ground, '#8a6a52'))
+            : relicModel(stone);
       m.position.set(cellToWorld(grid, r.x), 0, cellToWorld(grid, r.z));
       const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: '#f2c14e', blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
-      glow.position.y = 0.85;
+      glow.position.y = isMap ? 1.4 : 0.85;
       glow.scale.setScalar(1.6);
       m.add(glow);
       this.relics.set(`${r.x},${r.z}`, m);
@@ -194,9 +386,104 @@ export class LayoutViews {
 
     if (world.tiles.some((t) => t === Tile.Water || t === Tile.Bridge)) this.buildRiver(world, look);
     if (world.level.gate) {
-      if (world.level.goal.kind === 'reachExit') this.buildDock(world, look);
+      if (goal.kind === 'reachExit') this.buildDock(world, look);
+      else if (goal.kind === 'relicsThenGate' && goal.exit === 'boat') this.buildBoat(world, look);
+      else if (goal.kind === 'relicsThenGate' && goal.exit === 'oasis') this.buildOasis(world, look);
       else this.buildGate(world, look);
     }
+  }
+
+  /**
+   * Desert's exit: a small pool fringed with green and two quiver trees, against the north wall.
+   * Once every flask is found a shimmer rises over the water so you can find it in the haze.
+   */
+  private buildOasis(world: World, look: TerrainLook): void {
+    const { grid, gate } = world;
+    const x = cellToWorld(grid, gate.x);
+    const z = cellToWorld(grid, gate.z) - 2;
+    const g = new THREE.Group();
+    this.waterNormal = this.waterNormal ?? waterNormalTexture();
+    const pool = new THREE.Mesh(
+      new THREE.CircleGeometry(3, 40),
+      new THREE.MeshStandardMaterial({ color: '#2b6f73', roughness: 0.08, metalness: 0.1, normalMap: this.waterNormal, normalScale: new THREE.Vector2(0.4, 0.4) }),
+    );
+    pool.rotation.x = -Math.PI / 2;
+    pool.position.set(x, 0.05, z);
+    pool.receiveShadow = true;
+    const rim = new THREE.Mesh(new THREE.RingGeometry(2.9, 4.4, 40), new THREE.MeshStandardMaterial({ color: '#5d7a3a', roughness: 0.9 }));
+    rim.rotation.x = -Math.PI / 2;
+    rim.position.set(x, 0.03, z);
+    rim.receiveShadow = true;
+    g.add(pool, rim);
+    // Reeds around the water.
+    const colors = look.grass ?? { base: '#5d6a2c', tip: '#b8a75a' };
+    const reeds = new THREE.InstancedMesh(tuftGeometry(9, 3, new THREE.Color(colors.base), new THREE.Color(colors.tip), 17), new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide, roughness: 0.85 }), 22);
+    const m = new THREE.Matrix4();
+    for (let k = 0; k < 22; k++) {
+      const a = (k / 22) * Math.PI * 2 + jitter(k, 9) * 0.3;
+      const r = 3.1 + jitter(k, 10) * 0.9;
+      const h = 0.8 + jitter(k, 11) * 0.7;
+      m.compose(new THREE.Vector3(x + Math.cos(a) * r, 0, z + Math.sin(a) * r), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), a), new THREE.Vector3(0.8, h, 0.8));
+      reeds.setMatrixAt(k, m);
+    }
+    g.add(reeds);
+    for (const s of [-1, 1]) {
+      const tree = new THREE.Group();
+      tree.position.set(x + s * 5, 0, z + 0.5);
+      loadModel('quiver_tree_02')
+        .then((model) => {
+          model.scale.setScalar(4.5);
+          model.traverse((o) => {
+            if (o instanceof THREE.Mesh) o.castShadow = o.receiveShadow = true;
+          });
+          tree.add(model);
+        })
+        .catch((err: unknown) => console.warn('Oasis tree failed to load', err));
+      g.add(tree);
+    }
+    this.gateGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: '#cfeee4', blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0 }));
+    this.gateGlow.position.set(x, 1.4, z);
+    this.gateGlow.scale.set(7, 3.5, 1);
+    g.add(this.gateGlow);
+    this.oasis = true;
+    this.group.add(g);
+  }
+
+  /** Swamp's exit: a short jetty at the north edge with a rowboat tied alongside; its lantern lights when the boat is ready. */
+  private buildBoat(world: World, look: TerrainLook): void {
+    const { grid, gate } = world;
+    const plankSet = look.planks ?? look.wall;
+    const planks = pbrMaterial(plankSet);
+    const dark = pbrMaterial(plankSet, '#6d5a48');
+    const x = cellToWorld(grid, gate.x);
+    const z = cellToWorld(grid, gate.z);
+    const g = new THREE.Group();
+    const deck = new THREE.Mesh(worldUvBox(2.2, 0.16, 4.2, plankSet.tile), planks);
+    deck.position.set(x, 0.32, z - 0.4);
+    deck.castShadow = deck.receiveShadow = true;
+    g.add(deck);
+    for (const [dx, dz] of [[-1, -2.3], [1, -2.3], [-1, 1.4], [1, 1.4]]) {
+      const post = new THREE.Mesh(worldUvBox(0.2, 1.1, 0.2, plankSet.tile), dark);
+      post.position.set(x + dx, 0.45, z + dz);
+      post.castShadow = true;
+      g.add(post);
+    }
+    const boat = boatModel(planks, dark);
+    boat.position.set(x + 2.1, 0.02, z - 0.8);
+    boat.rotation.y = 0.12;
+    g.add(boat);
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 2.4, 8), dark);
+    pole.position.set(x - 1, 1.5, z + 1.4);
+    g.add(pole);
+    const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.34, 0.26), new THREE.MeshStandardMaterial({ color: '#3a3a30', emissive: '#ffb84a', emissiveIntensity: 0 }));
+    lamp.position.set(x - 1, 2.85, z + 1.4);
+    g.add(lamp);
+    this.boatLamp = lamp.material as THREE.MeshStandardMaterial;
+    this.gateGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: '#ffd18a', blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0 }));
+    this.gateGlow.position.copy(lamp.position);
+    this.gateGlow.scale.setScalar(3.4);
+    g.add(this.gateGlow);
+    this.group.add(g);
   }
 
   private waterNormal: THREE.Texture | null = null;
@@ -384,10 +671,32 @@ export class LayoutViews {
         this.relics.delete(key);
         continue;
       }
+      // Relics turn and bob; the map board stands still.
+      if (world.level.goal.kind === 'mapThenExit') continue;
       m.rotation.y += dt * 0.8;
       m.children.forEach((c, k) => {
         if (k > 0 && !(c instanceof THREE.Sprite)) c.position.y += Math.sin(now * 0.003) * 0.0006;
       });
+    }
+    // Lanterns light as you reach them (they are no longer in world.relics) and flicker.
+    if (this.lanterns.size) {
+      const unlit = new Set(world.relics.map((r) => `${r.x},${r.z}`));
+      let k = 0;
+      for (const [key, l] of this.lanterns) {
+        l.lit = !unlit.has(key);
+        const flick = 0.85 + 0.15 * Math.sin(now * 0.011 + k * 1.7) * Math.sin(now * 0.0037 + k);
+        l.glass.emissiveIntensity = l.lit ? 2.4 * flick : 0;
+        l.glass.color.set(l.lit ? '#ffe2a8' : '#3a3a30');
+        (l.glow.material as THREE.SpriteMaterial).opacity = l.lit ? 0.6 * flick : 0;
+        k++;
+      }
+    }
+    // The oasis shimmers once every flask is found.
+    if (this.oasis && this.gateGlow) (this.gateGlow.material as THREE.SpriteMaterial).opacity = world.gateOpen ? 0.45 + 0.15 * Math.sin(now * 0.003) : 0;
+    // The boat's lamp comes on when every lantern is lit.
+    if (this.boatLamp && this.gateGlow) {
+      this.boatLamp.emissiveIntensity = world.gateOpen ? 2.4 : 0;
+      (this.gateGlow.material as THREE.SpriteMaterial).opacity = world.gateOpen ? 0.7 + 0.1 * Math.sin(now * 0.004) : 0;
     }
     // The river's surface drifts.
     if (this.waterNormal) this.waterNormal.offset.set((now * 0.00002) % 1, (now * 0.00005) % 1);

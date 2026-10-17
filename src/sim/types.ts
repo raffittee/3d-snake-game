@@ -24,6 +24,16 @@ export interface PlayerState {
   vy: number;
   /** In deep water (only possible with a swim ring). */
   swimming: boolean;
+  /** Standing in swamp mud (slow). */
+  inMud: boolean;
+  /** Seconds left of the energy drink: full stamina, sprinting costs nothing. */
+  energy: number;
+  /** On ice (Frozen lake): you slide. */
+  onIce: boolean;
+  /** Seconds left of the ice cleats: no sliding. */
+  cleats: number;
+  /** In a closet (Broken house): a snake only finds you from right beside you. */
+  hidden: boolean;
   /** Horizontal velocity this frame (units/s), for the Predict snake. */
   vx: number;
   vz: number;
@@ -53,6 +63,8 @@ export interface PlayerInput {
   selectSlot: number;
   /** Step the selected slot by this much (mouse wheel), 0 for none. Wraps around. */
   cycleSlot: number;
+  /** Open or shut the door in reach (an edge; R). */
+  interact: boolean;
   /** Key turning: positive turns left. */
   turn: number;
   /** Radians added to yaw this frame (mouse or touch look). */
@@ -89,6 +101,22 @@ export interface SnakeState {
   splitWarn: number;
   /** World time it appeared (a split-off snake grows its head; the renderer animates that). */
   bornAt: number;
+  /** Stalk: it has broken cover and is charging you (until you get away). */
+  striking: boolean;
+  /** A firecracker's bang it is heading for (a grid cell) and seconds left; null when none. */
+  lure: { x: number; z: number; time: number } | null;
+  /**
+   * Per segment (same order as `cells`): under the sand (Burrow). An underground segment does not
+   * block or catch you and stones pass over it. The flags shift with the cells, so the body follows
+   * the head down into its hole and back up out of it.
+   */
+  under: boolean[];
+  /** Burrow: `up` on the surface (cooling down `t` s), `down` travelling under the sand (`t` s so far), `rising` (about to break the surface in `t` s). */
+  burrow: { mode: 'up' | 'down' | 'rising'; t: number };
+  /** Ambush: the spot it lies in wait at, or null to pick one. */
+  lurk: Cell | null;
+  /** Coil: the radius (cells) of the ring it is pulling in around you. */
+  coil: number;
 }
 
 /** A piece cut off a snake: it twitches and withers away. No collision. World units. */
@@ -103,7 +131,20 @@ export interface Severed {
 }
 
 /** Items, one entry per kind. Extend as items are built; each needs an entry in src/items. */
-export type ItemId = 'slingshot' | 'machete' | 'swimRing';
+export type ItemId = 'slingshot' | 'machete' | 'swimRing' | 'firecracker' | 'smokeBomb' | 'energyDrink' | 'mongoose' | 'iceCleats' | 'battery';
+
+/** A mongoose companion (World units): it runs to a snake and pins it in a fight, then leaves. */
+export interface Mongoose {
+  id: number;
+  x: number;
+  z: number;
+  /** Seconds left before it runs off. */
+  time: number;
+  /** The snake it is going for, or null while it looks for one (or waits by you). */
+  targetId: number | null;
+  /** At that snake's head, pinning it. */
+  fighting: boolean;
+}
 
 /** Rarer tiers carry more uses and spoil slower (BALANCE.items.tierScale). */
 export type Tier = 'white' | 'blue' | 'gold';
@@ -128,8 +169,9 @@ export interface Drop {
   z: number;
 }
 
-/** A thrown or shot object in flight (the slingshot's stone). World units. */
+/** A thrown or shot object in flight (the slingshot's stone, a firecracker). World units. */
 export interface Projectile {
+  kind: 'stone' | 'firecracker';
   x: number;
   y: number;
   z: number;
@@ -138,6 +180,15 @@ export interface Projectile {
   vz: number;
   /** Seconds left before it is removed. */
   life: number;
+}
+
+/** A firecracker lying on the ground with its fuse burning. World units. */
+export interface Firecracker {
+  x: number;
+  z: number;
+  /** Seconds until it bangs, and the full fuse (for the sparks). */
+  fuse: number;
+  total: number;
 }
 
 /** What a cut did: shrank the snake (a piece withered), split it in two, defeated it, or bounced off. */
@@ -152,13 +203,14 @@ export interface Pellet {
   z: number;
 }
 
-export type DeathCause = 'caught' | 'crushed' | 'drowned';
+export type DeathCause = 'caught' | 'crushed' | 'drowned' | 'fell';
 
 /** Things that happened this frame. The game layer turns them into sound and UI. */
 export type SimEvent =
   | { type: 'pelletCollected' }
   | { type: 'snakeAtePellet' }
-  | { type: 'snakeStep'; step: number; distance: number }
+  /** `x`, `z` in world units; `hidden`: its head is in tall grass (you hear it, you can't see it). */
+  | { type: 'snakeStep'; step: number; distance: number; x: number; z: number; hidden: boolean }
   | { type: 'died'; cause: DeathCause }
   | { type: 'lifeLost'; cause: DeathCause; livesLeft: number }
   | { type: 'secondWind' }
@@ -172,6 +224,33 @@ export type SimEvent =
   | { type: 'itemUsed'; slot: number; item: ItemId; usesLeft: number }
   | { type: 'itemSpoiled'; slot: number; item: ItemId }
   | { type: 'shotFired' }
+  | { type: 'firecrackerThrown' }
+  | { type: 'firecrackerLanded'; x: number; z: number }
+  /** `lured`: how many snakes heard it. */
+  | { type: 'firecrackerBang'; x: number; z: number; lured: number }
+  | { type: 'smokeBomb'; x: number; z: number }
+  | { type: 'energyDrink' }
+  | { type: 'mongooseReleased' }
+  | { type: 'mongooseFight'; x: number; z: number }
+  | { type: 'mongooseGone' }
+  | { type: 'snakeBurrowed'; x: number; z: number }
+  | { type: 'snakeRising'; x: number; z: number }
+  | { type: 'snakeSurfaced'; x: number; z: number }
+  | { type: 'stormWarning' }
+  | { type: 'cleatsOn' }
+  | { type: 'iceCracking'; x: number; z: number }
+  | { type: 'iceBroke'; x: number; z: number }
+  | { type: 'doorOpened'; x: number; z: number }
+  | { type: 'doorShut'; x: number; z: number }
+  | { type: 'doorBash'; x: number; z: number }
+  | { type: 'doorBroken'; x: number; z: number }
+  /** An Ambush snake heard (or saw) you and strikes. */
+  | { type: 'snakeNoticed'; x: number; z: number }
+  | { type: 'batteryIn' }
+  | { type: 'batteryDead' }
+  /** The Mother Snake's fight moved on: 2 = it split in two, 3 = the last one coils. */
+  | { type: 'bossPhase'; phase: number }
+  | { type: 'mapFound' }
   | { type: 'shotHit'; target: HitTarget }
   | { type: 'snakeStunned'; seconds: number }
   | { type: 'snakeCut'; result: CutResult; x: number; z: number }
@@ -190,10 +269,12 @@ export interface World {
   tiles: Uint8Array;
   /** Riverside: seconds left on each pellet speed boost (they stack). */
   boosts: number[];
-  /** Relics still lying in the level, and how many were found. */
+  /** Relics still lying in the level, and how many were found. In the corn maze the one "relic" is the map. */
   relics: Cell[];
   relicsFound: number;
-  /** The exit gate cell (Ruins); open once every relic is found. */
+  /** Where the found ones were (Swamp: lanterns stay standing, lit). */
+  relicsTaken: Cell[];
+  /** The exit gate cell (Ruins, Corn maze); open once every relic (or the map) is found. */
   gate: Cell;
   gateOpen: boolean;
   player: PlayerState;
@@ -220,8 +301,32 @@ export interface World {
   selectedSlot: number;
   /** Items lying in the arena. */
   drops: Drop[];
-  /** Stones in flight. */
+  /** Stones and firecrackers in flight. */
   projectiles: Projectile[];
+  /** Firecrackers on the ground, fuses burning. */
+  firecrackers: Firecracker[];
+  /** Smoke clouds from smoke bombs (world units), seconds left. Drawing only; the snakes are lured off. */
+  smokes: Array<{ x: number; z: number; time: number }>;
+  /** Mongooses fighting (or looking for) a snake. */
+  mongooses: Mongoose[];
+  nextMongooseId: number;
+  /** Desert: whether the next sandstorm's warning has been given (so it fires once per wave). */
+  stormWarned: number;
+  /** Frozen lake: cracked-ice cells (index z * size + x) that are giving way, and how far along (0..1, 1 = it breaks). */
+  cracking: Array<{ i: number; t: number }>;
+  /** Broken house: per cell, a Door's state (tiles.ts DoorState), and how long a snake has bashed it. */
+  doorState: Uint8Array;
+  doorDamage: Float32Array;
+  /** How far (cells) your noise carries this frame (footsteps, a slammed door); 0 when silent. */
+  noise: number;
+  /** Seconds left of a door slam's noise. */
+  slam: number;
+  /** Mother Snake fight (Dark cave): 1 hunting, 2 split in two, 3 the last one coils; 0 on other levels. */
+  bossPhase: number;
+  /** The Mother's length at the start (for the split at half). */
+  bossStartLength: number;
+  /** Flashlight battery, seconds (Dark cave); 0 = dark. Kept when you lose a life, like your items. */
+  battery: number;
   nextDropId: number;
   /** Seconds until the next drop tries to fall. */
   dropTimer: number;

@@ -25,6 +25,8 @@ export class Input {
   private useQueued = false;
   private slotQueued = -1;
   private cycleQueued = 0;
+  /** R: open or shut the door in reach, once per press. */
+  private interactQueued = false;
   /** Largest single mouse delta in pixels since the last `takePeakDelta()`. Debug panel only. */
   private peakDelta = 0;
   /** Only the game layer knows when input should be acted on. */
@@ -61,6 +63,7 @@ export class Input {
     this.useQueued = false;
     this.slotQueued = -1;
     this.cycleQueued = 0;
+    this.interactQueued = false;
     this.stick.hidden = true;
     this.dragging = false;
   }
@@ -111,6 +114,7 @@ export class Input {
       useItem: this.useQueued,
       selectSlot: this.slotQueued,
       cycleSlot: this.cycleQueued,
+      interact: this.interactQueued,
       turn: (k.has('KeyQ') ? 1 : 0) - (k.has('KeyE') ? 1 : 0),
       lookYaw: this.lookYaw,
       lookPitch: this.lookPitch,
@@ -120,6 +124,7 @@ export class Input {
     this.useQueued = false;
     this.slotQueued = -1;
     this.cycleQueued = 0;
+    this.interactQueued = false;
     return input;
   }
 
@@ -141,6 +146,7 @@ export class Input {
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
       if (e.code === 'Space' && !e.repeat && this.active) this.jumpQueued = true;
       if (e.code === 'KeyF' && !e.repeat && this.active) this.useQueued = true;
+      if (e.code === 'KeyR' && !e.repeat && this.active) this.interactQueued = true;
       // Digit1 selects slot 0, Digit2 slot 1, and so on; the sim ignores slots that do not exist.
       const digit = /^Digit([1-9])$/.exec(e.code);
       if (digit && this.active) this.slotQueued = Number(digit[1]) - 1;

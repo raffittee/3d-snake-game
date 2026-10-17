@@ -110,6 +110,53 @@ export const BALANCE = {
       },
       /** Swim ring: `uses` are seconds in deep water; they drain only while you swim. */
       swimRing: { uses: 30, spoilSeconds: 60 },
+      firecracker: {
+        uses: 1,
+        spoilSeconds: 40,
+        /** Thrown along the crosshair, tipped up by `throwLift` radians: about 11 cells on flat ground. */
+        throwSpeed: 20,
+        throwLift: 0.35,
+        gravity: 14,
+        radius: 0.15,
+        /** Seconds on the ground before it bangs. */
+        fuseSeconds: 1,
+        /** Every snake whose head is within this distance (units, 20 cells) heads for the bang this long. */
+        earshot: 40,
+        lureSeconds: 5,
+      },
+      battery: {
+        uses: 1,
+        spoilSeconds: 60,
+        /** Seconds of flashlight it adds. */
+        seconds: 60,
+      },
+      iceCleats: {
+        uses: 1,
+        spoilSeconds: 45,
+        /** Strapped on: no sliding on ice for this long. */
+        seconds: 20,
+      },
+      mongoose: {
+        uses: 1,
+        spoilSeconds: 50,
+        /** It fights for this long, running at `speed` (units/s); within `reach` of a head it pins that snake. */
+        seconds: 10,
+        speed: 11,
+        reach: 1.4,
+      },
+      energyDrink: {
+        uses: 1,
+        spoilSeconds: 45,
+        /** Drinking it fills your stamina, and sprinting costs none for this long. */
+        seconds: 5,
+      },
+      smokeBomb: {
+        uses: 1,
+        spoilSeconds: 40,
+        /** Every snake loses track of you and wanders off this long, toward a spot at least `wanderMinCells` from you. */
+        seconds: 6,
+        wanderMinCells: 12,
+      },
     },
   },
 
@@ -135,6 +182,8 @@ export const BALANCE = {
     secondWindGrace: 1.5,
     /** Keen ears: the arrow shows when the nearest snake head is within this gap. */
     keenEarsRange: 16,
+    /** Light feet: your footsteps carry this much as far. */
+    lightFeetNoise: 0.6,
   },
 
   arena: {
@@ -143,6 +192,8 @@ export const BALANCE = {
     /** Ruins: a low wall you jump (below the ~1.2 jump apex); a crumbling wall you cannot. */
     lowWallHeight: 0.7,
     crumbleHeight: 2.4,
+    /** Corn maze walls: well over your eyes (1.6), so they block sight. */
+    cornHeight: 2.6,
     /** Walk within this distance of a relic to pick it up, or of the open gate to leave. */
     relicPickupRadius: 1.1,
     gateRadius: 1.4,
@@ -159,9 +210,104 @@ export const BALANCE = {
     swimEyeDrop: 0.85,
   },
 
+  cave: {
+    /** The cave's rock ceiling (and its walls' height). */
+    ceiling: 5,
+    /** Flashlight battery at the start of the cave (seconds); it drains while you are in it. */
+    batteryStart: 90,
+    /** Under this many seconds the beam starts to flicker. */
+    batteryLow: 10,
+    /** The minimap only shows the cave this close to you (cells), and never the snakes. */
+    mapRadius: 10,
+    /** Mother Snake: it splits in two once its length is down to this share of where it started. */
+    splitShare: 0.5,
+  },
+
+  house: {
+    /** House walls: well over your head, nothing gets over them. */
+    wallHeight: 3.2,
+    /** A shut door stands this long against a snake bashing it. */
+    doorBreakSeconds: 3,
+    /** You can open or shut a door this close (units from you to the door cell's centre: about a cell and a half). */
+    doorReach: 3,
+    /** Share of doorways that start shut. */
+    shutShare: 0.55,
+  },
+
+  /** How far (cells) the noise you make carries: an Ambush snake that close hears you. */
+  noise: {
+    walk: 6,
+    sprint: 10,
+    /** Slamming a door shut: this loud, for this long. */
+    slam: 11,
+    slamSeconds: 0.6,
+  },
+
+  ice: {
+    /** On ice your speed only eases toward what you ask for, at this rate per second: you slide. */
+    grip: 1.6,
+    /**
+     * A snake at least `breakLength` long cracks the cracked ice its head crosses; the ice gives way
+     * once the segment `breakAt` behind the head is on it (whatever the speed), so the snake keeps a
+     * front `breakAt` long and loses what is behind (it becomes its own snake, or withers).
+     */
+    breakLength: 7,
+    breakAt: 5,
+  },
+
+  swamp: {
+    /** Walking and sprinting speed in mud, as a share of normal (the snake is not slowed). */
+    mudSpeed: 0.5,
+    /** How far your eye sinks while you stand in mud. */
+    mudEyeDrop: 0.22,
+  },
+
   ai: {
     /** Predict: aim for where the player will be this many seconds from now. */
     predictSeconds: 1,
+    /** Stalk: it breaks cover and charges once you are this close (cells), and gives up past `stalkReleaseCells`. */
+    stalkStrikeCells: 4,
+    stalkReleaseCells: 7,
+    /** Flank: the second snake heads this many cells ahead of you (or to your far side from the chaser)... */
+    flankAheadCells: 6,
+    /** ...until it is this close to you, then it simply chases. */
+    flankCloseCells: 3,
+    /**
+     * Burrow: after `burrowCooldown` s on the surface, with you at least `burrowMinGapCells` away, it
+     * dives; underground it steps this much faster (interval x `burrowSpeed`) toward where you will be
+     * in `burrowLeadSeconds`; within `burrowSurfaceCells` of you (or after `burrowMaxSeconds`) the sand
+     * heaves for `burrowRiseSeconds` before it breaks the surface.
+     */
+    burrowCooldown: 9,
+    burrowMinGapCells: 7,
+    burrowSpeed: 0.7,
+    burrowLeadSeconds: 1.5,
+    burrowSurfaceCells: 4,
+    burrowMaxSeconds: 10,
+    burrowRiseSeconds: 1,
+    /**
+     * Ambush: it lurks near pellets, items, doors and the key until it hears you (your noise reaches
+     * it) or sees you right beside it (`ambushSightCells`), then strikes until you are
+     * `ambushReleaseCells` away or hidden in a closet. It picks a lurk spot at least `ambushSpotFromYou` from you.
+     */
+    ambushSightCells: 2,
+    ambushReleaseCells: 12,
+    ambushSpotFromYou: 6,
+    /**
+     * Coil (boss only): it circles you on a ring `coilStartRadius` cells out, a little ahead of its
+     * head each step, and pulls the ring in by `coilTighten` cells a second down to `coilMinRadius`
+     * (where its body squeezes you). Farther than `coilReach` it first closes in like Chase.
+     */
+    coilStartRadius: 5,
+    coilMinRadius: 1,
+    coilTighten: 0.35,
+    coilLead: 0.9,
+    coilReach: 9,
+  },
+
+  grass: {
+    /** Grass height (shoulder-high: under your eyes at 1.6, over the snake as it is drawn inside it). */
+    height: 1.4,
   },
 
   lives: {

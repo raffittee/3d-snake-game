@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { jumpableTail } from '../sim/perks';
-import { hasTail } from '../sim/snake';
+import { hasTail, isUnder } from '../sim/snake';
+import { hiddenInGrass } from '../sim/tiles';
 import type { SnakeState, World } from '../sim/types';
 import { lerpAngle } from '../sim/math';
 import type { CameraView } from './renderer';
@@ -21,7 +22,19 @@ export interface SnakeView {
   /** Texture coordinate of the body at the head; grows by one per snake step so the scales travel. */
   stepsSeen: number;
   lastHead: { x: number; z: number };
+  /** Per segment, 0..1: how far it keeps low in tall grass (eased, so it sinks and rises smoothly). */
+  low: Float32Array;
+  /** Per segment, 0..1: how far it is down under the sand (Burrow), eased the same way. */
+  sink: Float32Array;
 }
+
+/** How fast a segment sinks into or rises out of tall grass (per second). */
+const LOW_RATE = 5;
+/** The head keeps low in grass too: its height scales by this. */
+const LOW_HEAD_SCALE = 0.6;
+/** How fast a segment goes down into the sand or comes up (per second), and how deep the head goes. */
+const SINK_RATE = 4;
+const HEAD_SINK_DEPTH = 2.6;
 
 let dropTex: THREE.CanvasTexture | null = null;
 
@@ -130,7 +143,7 @@ export class SnakeViews {
     this.scene.add(s.points);
   }
 
-  private viewFor(snake: SnakeState): SnakeView {
+  private viewFor(world: World, snake: SnakeState): SnakeView {
     let v = this.views.get(snake.id);
     if (!v) {
       v = {
@@ -139,7 +152,16 @@ export class SnakeViews {
         headYaw: Math.PI / 2,
         stepsSeen: 0,
         lastHead: { x: Number.NaN, z: Number.NaN },
+        low: new Float32Array(this.maxSegments + 2),
+        sink: new Float32Array(this.maxSegments + 2),
       };
+      snake.under.forEach((u, i) => {
+        if (v && u) v.sink[i] = 1;
+      });
+      // Born in grass: already low (no rising-and-sinking on the first frame).
+      snake.pos.forEach((p, i) => {
+        if (v && hiddenInGrass(world, p.x, p.z)) v.low[i] = 1;
+      });
       const c0 = snake.cells[0];
       const c1 = snake.cells[1];
       // A new snake faces away from its body.
@@ -156,14 +178,22 @@ export class SnakeViews {
     const jumpable = jumpableTail(world);
     for (const snake of world.snakes) {
       live.add(snake.id);
-      const v = this.viewFor(snake);
+      const v = this.viewFor(world, snake);
       const c0 = snake.cells[0];
       if (c0.x !== v.lastHead.x || c0.z !== v.lastHead.z) {
         if (!Number.isNaN(v.lastHead.x)) v.stepsSeen++;
         v.lastHead = { x: c0.x, z: c0.z };
       }
+      // Tall grass: each segment in it keeps low, under the grass tops; out in the open it rises.
+      const k = Math.min(1, dt * LOW_RATE);
+      // Burrow: each segment under the sand slides down below the ground (and back up after it).
+      const ks = Math.min(1, dt * SINK_RATE);
+      snake.pos.forEach((p, i) => {
+        v.low[i] += ((hiddenInGrass(world, p.x, p.z) ? 1 : 0) - v.low[i]) * k;
+        v.sink[i] += ((isUnder(snake, i) ? 1 : 0) - v.sink[i]) * ks;
+      });
       const t = snake.interval > 0 ? Math.min(1, snake.timer / snake.interval) : 0;
-      v.body.update(snake.pos, v.stepsSeen + t, 'head', hasTail(snake) ? 'tail' : 'cut', jumpable);
+      v.body.update(snake.pos, v.stepsSeen + t, 'head', hasTail(snake) ? 'tail' : 'cut', jumpable, v.low, v.sink);
       // About to split by itself: the body pulses.
       v.body.setFlash(snake.splitWarn > 0 ? 0.5 + 0.5 * Math.sin(now * 0.025) : 0);
 
@@ -174,7 +204,7 @@ export class SnakeViews {
       const dying = view.mode === 'dead' && snake.id === killerId;
       if (dying) continue; // the death camera poses this head
       const dazed = snake.stunTimer > 0;
-      v.head.group.position.set(snake.pos[0].x, 0, snake.pos[0].z);
+      v.head.group.position.set(snake.pos[0].x, -v.sink[0] * HEAD_SINK_DEPTH, snake.pos[0].z);
       if (dazed) {
         v.head.group.rotation.set(0.12 + Math.sin(now * 0.006) * 0.04, v.headYaw + Math.sin(now * 0.004) * 0.12, Math.sin(now * 0.005) * 0.08);
         v.head.setJaw(0.3);
@@ -185,8 +215,10 @@ export class SnakeViews {
       // A split-off snake grows its head in.
       const age = world.elapsed - snake.bornAt;
       const grow = snake.bornAt > 0 && age < HEAD_GROW ? 0.35 + 0.65 * (age / HEAD_GROW) : 1;
-      v.head.group.scale.setScalar(grow);
+      v.head.group.scale.set(grow, grow * (1 - (1 - LOW_HEAD_SCALE) * v.low[0]), grow);
       v.head.flick(dazed ? null : now);
+      // In the dark cave, eyes glow (you see them before anything else); a slow pulse.
+      v.head.setEyeGlow(world.level.flashlight ? 0.8 + 0.2 * Math.sin(now * 0.002 + snake.id) : 0);
     }
     for (const [id, v] of this.views) {
       if (!live.has(id)) {

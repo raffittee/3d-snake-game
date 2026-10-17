@@ -1,7 +1,19 @@
 import * as THREE from 'three';
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { HeldItem, ItemId } from '../sim/types';
-import { macheteModel, swimRingModel } from './itemModels';
+import {
+  FUSE_TIP,
+  batteryModel,
+  energyDrinkModel,
+  firecrackerModel,
+  iceCleatsModel,
+  macheteModel,
+  mongooseCageModel,
+  smokeBombModel,
+  sparkTexture,
+  swimRingModel,
+} from './itemModels';
+import { mongooseModel } from './mongoose';
 
 /**
  * First-person arms and hands holding the selected item, drawn in their own pass on top of the
@@ -393,7 +405,221 @@ class SwimRingRig implements ItemRig {
   }
 }
 
-const RIGS: Record<ItemId, () => ItemRig> = { slingshot: () => new SlingshotRig(), machete: () => new MacheteRig(), swimRing: () => new SwimRingRig() };
+/** Poses for a thrown item: held at rest, wound back, and where it leaves the hand. */
+interface ThrowPoses {
+  rest: BladePose;
+  windup: BladePose;
+  release: BladePose;
+}
+
+/** Overarm, along the crosshair (the firecracker). */
+const OVERARM: ThrowPoses = {
+  rest: { p: v3(0.15, -0.16, -0.44), r: new THREE.Euler(0.25, 0, -0.35) },
+  windup: { p: v3(0.23, -0.04, -0.3), r: new THREE.Euler(0.95, 0.2, -0.65) },
+  release: { p: v3(0.07, -0.03, -0.64), r: new THREE.Euler(-0.7, 0, -0.15) },
+};
+
+/** Smashed down at your feet (the smoke bomb). */
+const DOWNWARD: ThrowPoses = {
+  rest: { p: v3(0.14, -0.17, -0.42), r: new THREE.Euler(0.1, 0, -0.2) },
+  windup: { p: v3(0.19, -0.02, -0.36), r: new THREE.Euler(0.6, 0.1, -0.4) },
+  release: { p: v3(0.08, -0.42, -0.5), r: new THREE.Euler(-1.1, 0, -0.1) },
+};
+
+/**
+ * An item thrown from the right fist (firecracker, smoke bomb). A throw winds back, whips through
+ * and lets go (the item leaves the hand), then the hand recovers; a fresh one is in the fist again
+ * by the end if any are left. The left hand stays out of view. `spark`: a lit fuse at that point.
+ */
+class ThrowRig implements ItemRig {
+  readonly group = new THREE.Group();
+  readonly useTime = 0.62;
+  private readonly spark: THREE.Sprite | null = null;
+  private static readonly LET_GO = 0.22;
+  private static readonly BACK_IN_HAND = 0.5;
+
+  constructor(
+    private readonly item: THREE.Group,
+    private readonly poses: ThrowPoses,
+    spark?: THREE.Vector3,
+  ) {
+    if (spark) {
+      this.spark = new THREE.Sprite(new THREE.SpriteMaterial({ map: sparkTexture(), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
+      this.spark.position.copy(spark);
+      this.item.add(this.spark);
+    }
+    this.group.add(this.item);
+  }
+
+  update(t: number, left: Arm, right: Arm): void {
+    const { rest, windup, release } = this.poses;
+    let pose: { p: THREE.Vector3; q: THREE.Quaternion };
+    let open = 0;
+    if (t < 0.15) pose = lerpPose(rest, windup, easeOut(t / 0.15));
+    else if (t < 0.24) pose = lerpPose(windup, release, ((t - 0.15) / 0.09) ** 1.4);
+    else if (t < this.useTime) {
+      pose = lerpPose(release, rest, easeOut((t - 0.24) / (this.useTime - 0.24)));
+      open = 1 - clamp01((t - 0.36) / 0.2);
+    } else pose = lerpPose(rest, rest, 0);
+    if (t >= ThrowRig.LET_GO && t < 0.24) open = clamp01((t - ThrowRig.LET_GO) / 0.02);
+    this.item.visible = !(t >= ThrowRig.LET_GO && t < ThrowRig.BACK_IN_HAND);
+    this.item.position.copy(pose.p);
+    this.item.quaternion.copy(pose.q);
+    this.spark?.scale.setScalar(0.018 + 0.012 * Math.abs(Math.sin(performance.now() * 0.045)));
+    right.grip(v3(0.36, -0.62, -0.16).add(pose.p.clone().multiplyScalar(0.3)), pose.p, v3(0.7, 0.6, 0.4));
+    right.hand.setCurl(1 - open * 0.75, 1 - open * 0.6);
+    left.grip(v3(-0.3, -1.1, -0.2), v3(-0.25, -0.85, -0.45), v3(-1, 0, 0.3));
+    left.hand.setCurl(0.4);
+  }
+}
+
+/**
+ * The energy drink in the right hand. Drinking brings it up to your mouth and tips it back (the can
+ * passes out of view at the top of the screen), then lowers it again. The left hand stays out of view.
+ */
+class DrinkRig implements ItemRig {
+  readonly group = new THREE.Group();
+  readonly useTime = 0.9;
+  private readonly can = energyDrinkModel();
+  private readonly rest: BladePose = { p: v3(0.15, -0.17, -0.42), r: new THREE.Euler(0.1, 0.3, -0.12) };
+  /** Tipped back at the mouth (below the eye): the bottom of the can rises into the upper view. */
+  private readonly drink: BladePose = { p: v3(0.05, -0.06, -0.3), r: new THREE.Euler(-1.25, 0.15, 0.1) };
+
+  constructor() {
+    // Real size reads as huge this close to the eye; a little smaller sits right in the hand.
+    this.can.scale.setScalar(0.8);
+    this.group.add(this.can);
+  }
+
+  update(t: number, left: Arm, right: Arm): void {
+    let pose: { p: THREE.Vector3; q: THREE.Quaternion };
+    if (t < 0.25) pose = lerpPose(this.rest, this.drink, easeOut(t / 0.25));
+    else if (t < 0.55) pose = lerpPose(this.drink, this.drink, 0);
+    else if (t < this.useTime) pose = lerpPose(this.drink, this.rest, easeOut((t - 0.55) / (this.useTime - 0.55)));
+    else pose = lerpPose(this.rest, this.rest, 0);
+    // A little sway while you gulp.
+    if (t >= 0.25 && t < 0.55) pose.p.y += Math.sin((t - 0.25) * 30) * 0.004;
+    this.can.position.copy(pose.p);
+    this.can.quaternion.copy(pose.q);
+    right.grip(v3(0.36, -0.62, -0.12).add(pose.p.clone().multiplyScalar(0.4)), pose.p, v3(0.8, 0.4, 0.3).applyQuaternion(pose.q));
+    right.hand.setCurl(0.9);
+    left.grip(v3(-0.3, -1.1, -0.2), v3(-0.25, -0.85, -0.45), v3(-1, 0, 0.3));
+    left.hand.setCurl(0.4);
+  }
+}
+
+/**
+ * The mongoose's cage held in both hands in front of you. Letting it go tips the cage forward and
+ * down, the wire door drops open and the animal is gone (it runs out into the world).
+ */
+class CageRig implements ItemRig {
+  readonly group = new THREE.Group();
+  readonly useTime = 0.8;
+  private readonly cage: { group: THREE.Group; door: THREE.Group };
+  private readonly inside: THREE.Group;
+
+  constructor() {
+    this.inside = mongooseModel().group;
+    this.inside.scale.setScalar(0.25);
+    this.inside.position.y = -0.08;
+    this.cage = mongooseCageModel(this.inside);
+    // Real size reads as huge this close to the eye; smaller, it sits in the hands below the view.
+    this.cage.group.scale.setScalar(0.75);
+    this.group.add(this.cage.group);
+  }
+
+  update(t: number, left: Arm, right: Arm): void {
+    // Tip forward and down, door open, the animal out; then back up, empty, until the item is gone.
+    const k = t < 0.3 ? easeOut(t / 0.3) : t < this.useTime ? 1 - easeOut((t - 0.3) / (this.useTime - 0.3)) * 0.6 : 0;
+    const y = -0.27 - k * 0.1;
+    const z = -0.56 - k * 0.06;
+    this.cage.group.position.set(0.02, y, z);
+    // Tipped toward you so the wire door and the animal show.
+    this.cage.group.rotation.set(0.45 + k * 0.6, 0.15, 0);
+    this.cage.door.rotation.x = t < this.useTime ? Math.min(1, t / 0.15) * 1.4 : 0;
+    this.inside.visible = !(t >= 0.12 && t < this.useTime);
+    const r = 0.1;
+    const q = this.cage.group.quaternion;
+    const side = (s: number) => v3(s * r, 0, 0).applyQuaternion(q).add(this.cage.group.position);
+    left.grip(v3(-0.32, -0.62, -0.2), side(-1), v3(-0.7, 0.5, 0.3));
+    right.grip(v3(0.32, -0.62, -0.2), side(1), v3(0.7, 0.5, 0.3));
+    left.hand.setCurl(0.8);
+    right.hand.setCurl(0.8);
+  }
+}
+
+/**
+ * The ice cleats in the right hand. Strapping them on: both hands reach down out of view (to your
+ * boots) and come back up empty; a fresh pair is in the hand again by the end if any are left.
+ */
+class StrapOnRig implements ItemRig {
+  readonly group = new THREE.Group();
+  readonly useTime = 0.9;
+  private readonly cleats = iceCleatsModel();
+
+  constructor() {
+    this.cleats.scale.setScalar(0.5);
+    this.group.add(this.cleats);
+  }
+
+  update(t: number, left: Arm, right: Arm): void {
+    // Down to the boots and back: 0 at rest, 1 out of view below.
+    const down = t < 0.3 ? easeOut(t / 0.3) : t < 0.55 ? 1 : t < this.useTime ? 1 - easeOut((t - 0.55) / (this.useTime - 0.55)) : 0;
+    const p = v3(0.15, -0.22 - down * 0.5, -0.46 + down * 0.05);
+    this.cleats.visible = !(t >= 0.3 && t < 0.75);
+    this.cleats.position.copy(p);
+    this.cleats.rotation.set(0.9, 0.2, -0.3);
+    right.grip(v3(0.36, -0.7, -0.12), p, v3(0.7, 0.6, 0.4));
+    right.hand.setCurl(0.85);
+    left.grip(v3(-0.3, -1.1 + down * 0.1, -0.2), v3(-0.18, -0.85 + (1 - down) * 0.1 - down * 0.2, -0.45), v3(-1, 0, 0.3));
+    left.hand.setCurl(0.4);
+  }
+}
+
+/**
+ * A battery between thumb and fingers. Putting it in: the hand reaches down and left, out of view
+ * (to the flashlight in your other hand), and comes back empty; a fresh one is back by the end if
+ * any are left.
+ */
+class InsertRig implements ItemRig {
+  readonly group = new THREE.Group();
+  readonly useTime = 0.8;
+  private readonly cell = batteryModel();
+
+  constructor() {
+    this.cell.scale.setScalar(1.1);
+    this.group.add(this.cell);
+  }
+
+  update(t: number, left: Arm, right: Arm): void {
+    const away = t < 0.3 ? easeOut(t / 0.3) : t < 0.5 ? 1 : t < this.useTime ? 1 - easeOut((t - 0.5) / (this.useTime - 0.5)) : 0;
+    const p = v3(0.13 - away * 0.3, -0.18 - away * 0.4, -0.42);
+    this.cell.visible = !(t >= 0.3 && t < 0.65);
+    this.cell.position.copy(p);
+    this.cell.rotation.set(0.4, 0, -0.6 - away * 0.6);
+    right.pinch(v3(0.36, -0.66, -0.12), p, v3(0.6, 0.7, 0.4));
+    right.hand.setCurl(0.55, 0.5);
+    left.grip(v3(-0.3, -1.1, -0.2), v3(-0.25, -0.85, -0.45), v3(-1, 0, 0.3));
+    left.hand.setCurl(0.4);
+  }
+}
+
+const RIGS: Record<ItemId, () => ItemRig> = {
+  battery: () => new InsertRig(),
+  iceCleats: () => new StrapOnRig(),
+  mongoose: () => new CageRig(),
+  energyDrink: () => new DrinkRig(),
+  slingshot: () => new SlingshotRig(),
+  machete: () => new MacheteRig(),
+  swimRing: () => new SwimRingRig(),
+  firecracker: () => new ThrowRig(firecrackerModel(), OVERARM, FUSE_TIP),
+  smokeBomb: () => {
+    // Real size reads as huge this close to the eye; a little smaller sits right in the fist.
+    const can = smokeBombModel();
+    can.scale.setScalar(0.8);
+    return new ThrowRig(can, DOWNWARD);
+  },
+};
 
 export class Viewmodel {
   readonly scene = new THREE.Scene();
@@ -419,10 +645,18 @@ export class Viewmodel {
     this.right = new Arm(1, this.root, skin, sleeve, cuff);
     this.scene.add(this.root);
     // Soft key light from above-right plus fill; the image-based light comes from the main scene.
-    const key = new THREE.DirectionalLight('#fff1dc', 1.6);
-    key.position.set(0.6, 1, 0.4);
-    this.scene.add(key, new THREE.HemisphereLight('#cfdcea', '#4f5a3a', 0.6));
+    this.key.position.set(0.6, 1, 0.4);
+    this.scene.add(this.key, this.fill);
     this.root.visible = false;
+  }
+
+  private readonly key = new THREE.DirectionalLight('#fff1dc', 1.6);
+  private readonly fill = new THREE.HemisphereLight('#cfdcea', '#4f5a3a', 0.6);
+
+  /** How lit the hands are, 0..1 (the Dark cave dims them to what the flashlight gives). */
+  setLight(k: number): void {
+    this.key.intensity = 1.6 * k;
+    this.fill.intensity = 0.6 * k;
   }
 
   /** Play the selected item's use motion. */

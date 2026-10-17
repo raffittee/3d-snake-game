@@ -14,6 +14,13 @@ function removeSnake(world: World, snake: SnakeState): void {
   if (i >= 0) world.snakes.splice(i, 1);
 }
 
+/** A whole snake goes down through the ice (its head was on the cell that broke): gone, as if defeated. */
+export function fallThrough(world: World, snake: SnakeState): void {
+  sever(world, snake.pos, hasTail(snake));
+  removeSnake(world, snake);
+  world.events.push({ type: 'snakeDefeated' });
+}
+
 /**
  * Cut `count` segments out of `snake` starting at segment `seg` (the head, 0, cannot be cut).
  * - Levels where the snake can be beaten: a front piece under 3 segments means it is defeated.
@@ -45,18 +52,22 @@ export function cutSnake(world: World, snake: SnakeState, seg: number, count = 1
 
   const backPos = snake.pos.slice(end);
   const backPrev = snake.prev.slice(end);
+  const backUnder = snake.under.slice(end);
   const tail = hasTail(snake);
   const stumpLeft = snake.stump;
 
   snake.cells = front;
   snake.prev = snake.prev.slice(0, seg);
   snake.pos = snake.pos.slice(0, seg);
+  snake.under = snake.under.slice(0, seg);
   snake.stump = BALANCE.snake.jumpableTail;
   // Growth already owed stays with the front piece.
 
-  if (back.length >= BALANCE.snake.minSplitLength) {
+  // The Mother Snake (boss): what is cut off never grows a head of its own; it withers.
+  if (back.length >= BALANCE.snake.minSplitLength && !cfg.boss) {
     const born = makeSnake(world, world.nextSnakeId++, back);
     born.prev = backPrev.map((c) => ({ ...c }));
+    born.under = backUnder;
     born.timer = snake.timer;
     born.interval = snake.interval;
     born.stump = stumpLeft;
@@ -87,12 +98,13 @@ export function updateGrowthSplit(world: World, snake: SnakeState, dt: number): 
   }
 }
 
-/** Split without destroying a segment: the back half grows a head. */
-function splitInHalf(world: World, snake: SnakeState): void {
+/** Split without destroying a segment: the back half grows a head (the growth split, and the Mother Snake's split). */
+export function splitInHalf(world: World, snake: SnakeState): void {
   const mid = Math.floor(snake.cells.length / 2);
   const back = snake.cells.slice(mid);
   const born = makeSnake(world, world.nextSnakeId++, back);
   born.prev = snake.prev.slice(mid).map((c) => ({ ...c }));
+  born.under = snake.under.slice(mid);
   born.timer = snake.timer;
   born.interval = snake.interval;
   born.stump = snake.stump;
@@ -102,6 +114,7 @@ function splitInHalf(world: World, snake: SnakeState): void {
   snake.cells = snake.cells.slice(0, mid);
   snake.prev = snake.prev.slice(0, mid);
   snake.pos = snake.pos.slice(0, mid);
+  snake.under = snake.under.slice(0, mid);
   snake.stump = BALANCE.snake.jumpableTail;
   world.snakes.push(born);
   world.events.push({ type: 'snakeCut', result: 'split', x: at.x, z: at.z });

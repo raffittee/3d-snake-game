@@ -5,11 +5,30 @@ import { cellToWorld } from './grid';
 import type { Grid } from './grid';
 import type { Cell, PlayerInput, PlayerState, World } from './types';
 
-export const NO_INPUT: PlayerInput = { forward: 0, strafe: 0, sprint: false, jump: false, useItem: false, selectSlot: -1, cycleSlot: 0, turn: 0, lookYaw: 0, lookPitch: 0 };
+export const NO_INPUT: PlayerInput = { forward: 0, strafe: 0, sprint: false, jump: false, useItem: false, selectSlot: -1, cycleSlot: 0, interact: false, turn: 0, lookYaw: 0, lookPitch: 0 };
 
 /** A fresh player standing on `start`. The caller turns them to face the snake. */
 export function createPlayer(grid: Grid, start: Cell): PlayerState {
-  return { x: cellToWorld(grid, start.x), z: cellToWorld(grid, start.z), y: 0, vy: 0, vx: 0, vz: 0, swimming: false, yaw: 0, pitch: 0, stamina: 1, tired: false, moving: false, sprinting: false };
+  return {
+    x: cellToWorld(grid, start.x),
+    z: cellToWorld(grid, start.z),
+    y: 0,
+    vy: 0,
+    vx: 0,
+    vz: 0,
+    swimming: false,
+    inMud: false,
+    energy: 0,
+    onIce: false,
+    cleats: 0,
+    hidden: false,
+    yaw: 0,
+    pitch: 0,
+    stamina: 1,
+    tired: false,
+    moving: false,
+    sprinting: false,
+  };
 }
 
 /** Speed multiplier from pellet boosts: each one fades linearly to nothing over the level's boost time. */
@@ -35,16 +54,37 @@ export function updatePlayer(world: World, input: PlayerInput, dt: number): void
   p.moving = len > cfg.moveDeadzone;
   const sprint = input.sprint && p.moving && !p.tired && p.stamina > 0 && !p.swimming;
   p.sprinting = sprint;
-  p.stamina = clamp(p.stamina + (sprint ? -cfg.staminaDrain * staminaDrainScale(world) : cfg.staminaRegen) * dt, 0, 1);
-  if (p.stamina <= 0) p.tired = true;
-  if (p.tired && p.stamina > cfg.tiredRecoverAt) p.tired = false;
+  if (p.energy > 0) {
+    // Energy drink: stamina stays full, so sprinting is free while it lasts.
+    p.energy = Math.max(0, p.energy - dt);
+    p.stamina = 1;
+    p.tired = false;
+  } else {
+    p.stamina = clamp(p.stamina + (sprint ? -cfg.staminaDrain * staminaDrainScale(world) : cfg.staminaRegen) * dt, 0, 1);
+    if (p.stamina <= 0) p.tired = true;
+    if (p.tired && p.stamina > cfg.tiredRecoverAt) p.tired = false;
+  }
 
-  // Swimming: slow, no sprint. On land, pellet boosts (Riverside) add speed.
-  const speed = p.swimming ? cfg.walkSpeed * BALANCE.river.swimSpeed : (sprint ? cfg.sprintSpeed : cfg.walkSpeed) * boostScale(world);
+  // Swimming: slow, no sprint. On land, pellet boosts (Riverside) add speed; mud (Swamp) halves it.
+  const mud = p.inMud && p.y <= 0 ? BALANCE.swamp.mudSpeed : 1;
+  const speed = p.swimming ? cfg.walkSpeed * BALANCE.river.swimSpeed : (sprint ? cfg.sprintSpeed : cfg.walkSpeed) * boostScale(world) * mud;
   const sy = Math.sin(p.yaw);
   const cy = Math.cos(p.yaw);
-  p.vx = (-sy * f + cy * s) * speed;
-  p.vz = (-cy * f - sy * s) * speed;
+  const wantX = (-sy * f + cy * s) * speed;
+  const wantZ = (-cy * f - sy * s) * speed;
+  p.cleats = Math.max(0, p.cleats - dt);
+  if (p.onIce && p.cleats <= 0) {
+    // Ice: your speed only eases toward what you ask for, so you are slow to start, turn and stop
+    // (in the air you keep your slide).
+    if (p.y <= 0) {
+      const k = Math.min(1, BALANCE.ice.grip * dt);
+      p.vx += (wantX - p.vx) * k;
+      p.vz += (wantZ - p.vz) * k;
+    }
+  } else {
+    p.vx = wantX;
+    p.vz = wantZ;
+  }
   p.x += p.vx * dt;
   p.z += p.vz * dt;
 

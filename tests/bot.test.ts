@@ -19,7 +19,7 @@ function botInput(w: World): PlayerInput {
   let d = targetYaw - w.player.yaw;
   d = Math.atan2(Math.sin(d), Math.cos(d));
   const dist = Math.hypot(awayX, awayZ);
-  return { forward: 1, strafe: 0, sprint: dist < 10, jump: false, useItem: false, selectSlot: -1, cycleSlot: 0, turn: 0, lookYaw: Math.max(-0.2, Math.min(0.2, d)), lookPitch: 0 };
+  return { forward: 1, strafe: 0, sprint: dist < 10, jump: false, useItem: false, selectSlot: -1, cycleSlot: 0, interact: false, turn: 0, lookYaw: Math.max(-0.2, Math.min(0.2, d)), lookPitch: 0 };
 }
 
 function run(seed: number, seconds: number) {

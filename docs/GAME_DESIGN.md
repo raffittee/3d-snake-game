@@ -30,8 +30,33 @@ Snake Hunt is a first-person 3D reversal of Snake: you are the food, and a growi
 | First-person hands | Gloved hands hold the selected item and play its use motion; every item gets one |
 | Perk picks | Level-ups earned in a level are spent between levels (3 offered, pick 1 each); no mid-chase pause |
 | Machete aim | It cuts the segment under the crosshair within reach; a swing at nothing still costs a cut |
-| Snake floor (Levels 1 to 3) | 5 segments: a cut that would go under it bounces off |
+| Snake floor (every level but 8 and 10) | 5 segments: a cut that would go under it bounces off |
 | Snake and water | The snake swims too, slower than it moves on land |
+| Tall grass height | Shoulder-high (1.4): you see over it but not into it; the snake keeps low inside it |
+| Minimap in tall grass | Snake segments in grass are left off the minimap; so are Level 4's hidden pellets |
+| Stalk | Moves only through grass; lurks at the edge nearest you; breaks cover to strike within 4 cells (gives up past 7) |
+| Firecracker | Thrown in an arc along the crosshair (about 11 cells), 1 s fuse, then every snake within 20 cells heads for the bang for 5 s |
+| Corn maze shape | Corridors 2 cells wide between corn walls taller than you; some loops (16% of walls knocked through), so two snakes can't corner you in every dead end; a tower in the middle shows above the corn |
+| Flank | One snake chases; the other heads 6 cells ahead of where you run (or to your far side from the chaser), and chases once within 3 cells |
+| Smoke bomb | Smashed at your feet: every snake loses track and wanders to a spot 12+ cells away for 6 s |
+| The map (Level 5) | Lies at the far end of the maze from the start; finding it turns the minimap on and opens the exit |
+| Mud | Half speed for you (walking and sprinting; jumping still works), full speed for the snake; every island has a dry path (log or lily pads) to the start |
+| Signal lanterns (Level 6) | Walk up to one to light it; it stays lit; the 4th readies the boat |
+| Energy drink | Full stamina, and sprinting costs nothing for 5 s |
+| Sandstorm waves | Every 32 s from 20 s in, 10 s each (2.5 s to blow in and die down); the wind rises 4 s before; visibility drops to about 6 cells |
+| Burrow | Dives only after 9 s on the surface and with you 7+ cells away; travels 30% faster underground toward where you'll be; surfaces about 4 cells from you after a 1 s warning heave; can't touch you while under |
+| Mongoose | Runs to the nearest snake above ground and pins it for 10 s; can't reach a snake under the sand |
+| Sliding on ice | Your speed eases toward your input (slow to start, turn and stop); in the air you keep your slide; ice cleats give full grip for 20 s |
+| Cracked ice | A snake 7+ long cracks it; it breaks when the snake's 5th segment behind the head is on it (so a break always leaves a front of 5); the whole patch breaks; the segments over it are cut out like a machete cut; standing on it, you fall in (a life) |
+| Beating Level 8 | Every snake under 3: ice for the big bites, the machete to finish (short snakes are too light to break ice) |
+| Broken house size | 48x48 (tight rooms), not 64x64 |
+| Doors | R opens or shuts the door in reach (about a cell and a half); a snake bashes a shut one down in 3 s |
+| Hiding | In a closet the snake loses you unless it is right beside you |
+| Noise | Walking 6 cells, sprinting 10, still none, a slammed door 11; Light feet 40% quieter; a Noise meter shows yours on Ambush levels |
+| Ambush | Lies in wait near pellets, items, doors and the key; strikes when it hears you or you're within 2 cells; gives up at 12 or when you hide |
+| Flashlight | Always on; 90 s of battery at the start, +60 s per battery; flickers under 10 s; out at 0 (only glowing eyes and fungus show) |
+| Cave minimap | Only the cave within 10 cells of you, never the snakes |
+| Mother Snake | 30 long; cut-off pieces wither (no extra snakes in phase 1); splits in two at 15; the last one left coils (a ring pulled in from 5 cells to 1, paused while stunned) |
 | Host leaves a room | The match ends for everyone |
 | Snake player's view | Third person, just above the head |
 | Voice chat | Push-to-talk and open mic both available; proximity voice is a host option; no relay server for now |

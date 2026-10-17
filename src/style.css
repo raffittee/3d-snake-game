@@ -23,6 +23,25 @@
   --map-relic:#f2c14e;
   --map-water:#2f6f7a;
   --map-bridge:#8a6a45;
+  /* Tall grass: darker than open ground and well apart from the snake's olive. */
+  --map-grass:#3c4630;
+  /* Corn maze walls (once you have the map). */
+  --map-corn:#7a6a33;
+  /* Swamp: mud, and the firm paths across it (logs and lily pads). */
+  --map-mud:#2d3424;
+  --map-log:#7a5f40;
+  --map-pad:#5c7a34;
+  /* Frozen lake: ice, cracked ice (the lure spots), holes. */
+  --map-ice:#3b5566;
+  --map-cracked:#8fb0c2;
+  --map-hole:#0b141a;
+  /* Broken house: walls, doors (shut brighter than open), closets. */
+  --map-housewall:#a99a7c;
+  --map-door-shut:#c08a52;
+  --map-door-open:#4a3a2a;
+  --map-closet:#6b4f3c;
+  /* The energy drink's glow on the stamina bar. */
+  --energy:#b8e04a;
   /* Item tiers: inventory rings, drop glows, minimap. Never red (red means danger). */
   --tier-white:#e8ece6;
   --tier-blue:#6cb2ff;
@@ -82,10 +101,27 @@ body{font:16px/1.4 var(--font);-webkit-font-smoothing:antialiased}
 .bar{width:160px;height:8px;border-radius:4px;background:rgba(255,255,255,.14);overflow:hidden}
 .bar i{display:block;height:100%;width:100%;border-radius:4px;background:var(--text)}
 .bar.tired i{background:var(--alert)}
+/* Effects running out (energy drink, ice cleats): small chips with seconds left. */
+.buffs{display:flex;gap:6px;flex-wrap:wrap}
+.buff{font-size:12px;font-weight:600;padding:2px 8px;border-radius:999px;background:rgba(255,255,255,.1);font-variant-numeric:tabular-nums}
+/* Energy drink: sprinting is free for a few seconds. */
+.bar.energized i{background:var(--energy);box-shadow:0 0 10px var(--energy)}
+.bar.energized{animation:energized .6s ease-in-out infinite alternate}
+@keyframes energized{to{box-shadow:0 0 8px var(--energy)}}
 #cross{position:fixed;left:50%;top:50%;width:6px;height:6px;margin:-3px 0 0 -3px;pointer-events:none;border-radius:50%;
   background:rgba(255,255,255,.85);box-shadow:0 0 0 1.5px rgba(0,0,0,.45)}
 /* Keen ears: an arrow around the crosshair pointing at the nearest snake. */
 #keenArrow{position:fixed;left:50%;top:50%;width:0;height:0;pointer-events:none}
+/* What R does here (Broken house doors), just under the crosshair. */
+#prompt{position:fixed;left:50%;top:calc(50% + 26px);transform:translateX(-50%);pointer-events:none;font-size:14px;font-weight:600;
+  padding:4px 10px;border-radius:999px;background:var(--panel);border:1px solid var(--line);white-space:nowrap}
+#prompt kbd{font:inherit;font-weight:700;padding:0 6px;margin-right:2px;border-radius:5px;background:rgba(255,255,255,.16)}
+/* The flashlight's battery (Dark cave); gold, then blinking when it runs low. */
+.bar.light i{background:var(--tier-gold);width:100%}
+.bar.light.low i{animation:blink .5s steps(1) infinite}
+/* How far your noise carries (Ambush levels). */
+.bar.noise{height:5px}
+.bar.noise i{background:var(--text);width:0;transition:width .12s linear}
 #keenArrow::after{content:"";position:absolute;left:-9px;top:-92px;border:9px solid transparent;border-bottom:16px solid var(--alert);opacity:.85}
 /* Perk pick: three cards to choose from. */
 .perks{display:flex;flex-direction:column;gap:10px}
@@ -154,5 +190,5 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
   .bar{width:110px}
   .card{padding:22px 18px 18px}
 }
-@media (prefers-reduced-motion:reduce){#cross.hit{animation:none}#danger{transition:none}#livesBox.grace{animation:none;text-decoration:underline}.slot.spoiling .ring{animation:none}.btn{transition:none}}
+@media (prefers-reduced-motion:reduce){#cross.hit{animation:none}#danger{transition:none}#livesBox.grace{animation:none;text-decoration:underline}.slot.spoiling .ring{animation:none}.bar.energized{animation:none}.bar.light.low i{animation:none}.btn{transition:none}}
 [hidden]{display:none!important}

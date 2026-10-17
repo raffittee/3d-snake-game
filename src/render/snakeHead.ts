@@ -14,6 +14,29 @@ const HEAD_SCALE = { x: 1.08, y: 1.4, z: 1.05 };
 const HEAD_UV_SIZE = 0.7;
 
 const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
+
+let glowTex: THREE.CanvasTexture | null = null;
+
+/** A soft round glow (made in code), shared by every glowing eye. */
+function glowDot(): THREE.CanvasTexture {
+  if (glowTex) return glowTex;
+  const s = 64;
+  const c = document.createElement('canvas');
+  c.width = c.height = s;
+  const g = c.getContext('2d');
+  if (g) {
+    const grad = g.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
+    grad.addColorStop(0, 'rgba(255,255,255,1)');
+    grad.addColorStop(0.2, 'rgba(255,255,255,0.5)');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, s, s);
+  }
+  glowTex = new THREE.CanvasTexture(c);
+  glowTex.colorSpace = THREE.SRGBColorSpace;
+  return glowTex;
+}
+
 /** 0 at the back of the head, 1 at the snout. */
 const frac = (z: number): number => (z - BACK_Z) / (SNOUT_Z - BACK_Z);
 /** Half width of the head: wide at the jaw hinge, narrow at the snout. */
@@ -116,6 +139,7 @@ export class SnakeHead {
     // Eyes: glossy amber with a vertical slit pupil, set on the sides near the front.
     // Dark with a little gloss. Bright, mirror-like eyes read as cartoonish.
     const eyeMat = new THREE.MeshStandardMaterial({ color: '#3a2a0b', roughness: 0.45, metalness: 0, envMapIntensity: 0.4 });
+    this.eyeMat = eyeMat;
     const pupilMat = new THREE.MeshStandardMaterial({ color: '#050505', roughness: 0.2 });
     const nostrilMat = new THREE.MeshStandardMaterial({ color: '#1f1c12', roughness: 0.8 });
     const ez = lerp(BACK_Z, SNOUT_Z, 0.66);
@@ -129,6 +153,7 @@ export class SnakeHead {
       pupil.position.set(sx * 0.092, 0, 0.012);
       eye.add(pupil);
       this.group.add(eye);
+      this.eyes.push(eye);
       // Nostrils: small, dark and right at the tip of the snout.
       const nostril = new THREE.Mesh(new THREE.SphereGeometry(0.022, 8, 6), nostrilMat);
       nostril.position.set(sx * 0.09, JAW_Y + skullHeight(0.97) * 0.45, SNOUT_Z - 0.04);
@@ -157,6 +182,33 @@ export class SnakeHead {
         o.receiveShadow = true;
       }
     });
+  }
+
+  private eyeMat: THREE.MeshStandardMaterial | null = null;
+  private readonly eyes: THREE.Mesh[] = [];
+  private eyeGlows: THREE.Sprite[] = [];
+
+  /**
+   * Eyes that glow in the dark (Dark cave): a sickly green, `k` 0..1 (0 = plain dark eyes). Each eye
+   * also gets a soft halo, so the pair reads from across the cave when nothing else can be seen.
+   */
+  setEyeGlow(k: number): void {
+    if (!this.eyeMat) return;
+    this.eyeMat.emissive.setRGB(0.45 * k, 1.0 * k, 0.25 * k);
+    this.eyeMat.emissiveIntensity = 2.2;
+    if (k > 0 && !this.eyeGlows.length) {
+      const mat = new THREE.SpriteMaterial({ map: glowDot(), color: '#9cff7a', blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
+      this.eyeGlows = this.eyes.map((eye) => {
+        const s = new THREE.Sprite(mat);
+        s.scale.setScalar(3.5);
+        eye.add(s);
+        return s;
+      });
+    }
+    for (const s of this.eyeGlows) {
+      s.visible = k > 0;
+      s.material.opacity = 0.75 * k;
+    }
   }
 
   /** 0 closed, 1 fully open. */
