@@ -19,17 +19,17 @@ function worldWithLongSnake(): World {
   w.pillars.fill(0);
   const cells = [];
   for (let i = 0; i < 10; i++) cells.push({ x: 20 - i, z: 10 });
-  w.snake.cells = cells;
-  w.snake.prev = cells.map((c) => ({ ...c }));
-  w.snake.pendingGrow = 0;
-  w.snake.timer = 0;
-  computeSegmentPositions(w.snake, w.grid, 0);
+  w.snakes[0].cells = cells;
+  w.snakes[0].prev = cells.map((c) => ({ ...c }));
+  w.snakes[0].pendingGrow = 0;
+  w.snakes[0].timer = 0;
+  computeSegmentPositions(w.snakes[0], w.grid, 0);
   return w;
 }
 
 /** Put the player in the air, slightly off-center over segment `i`. */
 function hoverOver(w: World, i: number, y: number): void {
-  const c = w.snake.cells[i];
+  const c = w.snakes[0].cells[i];
   w.player.x = cellToWorld(w.grid, c.x);
   w.player.z = cellToWorld(w.grid, c.z) + 0.3;
   w.player.y = y;
@@ -77,7 +77,7 @@ describe('jumping', () => {
 
   it('jumps high enough to clear the tail but never the rest of the body', () => {
     const w = worldWithLongSnake();
-    const len = w.snake.cells.length;
+    const len = w.snakes[0].cells.length;
     expect(apex).toBeGreaterThan(segmentHeight(len - 1, len) + 0.3);
     expect(apex).toBeLessThan(segmentHeight(len - BALANCE.snake.jumpableTail - 1, len));
   });
@@ -118,7 +118,7 @@ describe('jumping', () => {
     w.invulnerable = false;
     w.lives = 1;
     // Deep inside a body segment while low in the air: still counts as being crushed.
-    const c = w.snake.cells[3];
+    const c = w.snakes[0].cells[3];
     w.player.x = cellToWorld(w.grid, c.x);
     w.player.z = cellToWorld(w.grid, c.z);
     w.player.y = 0.5;

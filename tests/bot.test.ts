@@ -9,7 +9,7 @@ import { createWorld, updateWorld } from '../src/sim/world';
  * It is not smart. Its job is to keep the sim busy for a few minutes so invariants can be checked.
  */
 function botInput(w: World): PlayerInput {
-  const head = w.snake.pos[0];
+  const head = w.snakes[0].pos[0];
   const awayX = w.player.x - head.x;
   const awayZ = w.player.z - head.z;
   // Blend in a pull toward the arena center so the bot does not just hug a wall.
@@ -19,7 +19,7 @@ function botInput(w: World): PlayerInput {
   let d = targetYaw - w.player.yaw;
   d = Math.atan2(Math.sin(d), Math.cos(d));
   const dist = Math.hypot(awayX, awayZ);
-  return { forward: 1, strafe: 0, sprint: dist < 10, jump: false, turn: 0, lookYaw: Math.max(-0.2, Math.min(0.2, d)), lookPitch: 0 };
+  return { forward: 1, strafe: 0, sprint: dist < 10, jump: false, useItem: false, selectSlot: -1, cycleSlot: 0, turn: 0, lookYaw: Math.max(-0.2, Math.min(0.2, d)), lookPitch: 0 };
 }
 
 function run(seed: number, seconds: number) {
@@ -28,24 +28,24 @@ function run(seed: number, seconds: number) {
   w.invulnerable = true;
   const dt = 1 / 60;
   let stuckFor = 0;
-  let lastHead = { ...w.snake.cells[0] };
+  let lastHead = { ...w.snakes[0].cells[0] };
   let maxStuck = 0;
   let broken = 0;
   let peakLength = 0;
   for (let t = 0; t < seconds; t += dt) {
     updateWorld(w, botInput(w), dt);
-    const h = w.snake.cells[0];
+    const h = w.snakes[0].cells[0];
     if (h.x === lastHead.x && h.z === lastHead.z) stuckFor += dt;
     else stuckFor = 0;
     lastHead = { ...h };
     maxStuck = Math.max(maxStuck, stuckFor);
     // Every segment must touch the one before it.
-    for (let i = 1; i < w.snake.cells.length; i++) {
-      const a = w.snake.cells[i - 1];
-      const b = w.snake.cells[i];
+    for (let i = 1; i < w.snakes[0].cells.length; i++) {
+      const a = w.snakes[0].cells[i - 1];
+      const b = w.snakes[0].cells[i];
       if (Math.abs(a.x - b.x) + Math.abs(a.z - b.z) !== 1) broken++;
     }
-    peakLength = Math.max(peakLength, w.snake.cells.length);
+    peakLength = Math.max(peakLength, w.snakes[0].cells.length);
     w.events.length = 0;
   }
   return { w, maxStuck, broken, peakLength };
@@ -60,8 +60,8 @@ describe('headless bot run', () => {
     // The snake grows while hunting. The bot is invulnerable, so the snake can end up sitting
     // on it and shedding its tail; the peak length shows that growth happened.
     expect(peakLength).toBeGreaterThan(level01.snake.startLength + 8);
-    expect(w.snake.cells.length).toBeGreaterThanOrEqual(4);
-    expect(w.snake.cells.length).toBeLessThanOrEqual(level01.snake.maxLength);
+    expect(w.snakes[0].cells.length).toBeGreaterThanOrEqual(4);
+    expect(w.snakes[0].cells.length).toBeLessThanOrEqual(level01.snake.maxLength);
     // The snake keeps moving: it never sits still on one cell for long.
     expect(maxStuck).toBeLessThan(BALANCE.snake.baseInterval * 6);
     // Its body stays one connected chain.
@@ -72,7 +72,7 @@ describe('headless bot run', () => {
     const a = run(77, 20).w;
     const b = run(77, 20).w;
     expect(a.player).toEqual(b.player);
-    expect(a.snake.cells).toEqual(b.snake.cells);
+    expect(a.snakes[0].cells).toEqual(b.snakes[0].cells);
     expect(a.pelletsCollected).toBe(b.pelletsCollected);
   });
 });

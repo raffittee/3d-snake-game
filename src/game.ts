@@ -6,7 +6,12 @@ import { GameRenderer } from './render/renderer';
 import type { CameraView } from './render/renderer';
 import { BALANCE } from './config/balance';
 import { clamp } from './sim/math';
-import { createWorld, dangerLevel, drainEvents, gapToSnake, scoreOf, updateDemo, updateWorld } from './sim/world';
+import { createRng } from './sim/rng';
+import type { Rng } from './sim/rng';
+import { levelForXp, newRun, offerPerks, pendingPicks, xpForNextLevel } from './sim/run';
+import type { RunState } from './sim/run';
+import type { PerkId } from './sim/perks';
+import { createWorld, dangerLevel, drainEvents, gapToSnake, nearestSnake, scoreOf, updateDemo, updateWorld } from './sim/world';
 import type { World } from './sim/types';
 import type { Quality, Settings } from './settings';
 import { loadBest, loadSettings, saveBest, saveSettings } from './storage';
@@ -15,13 +20,16 @@ import { $ } from './ui/dom';
 import { Hud } from './ui/hud';
 import { Panels } from './ui/panels';
 
-export type GameState = 'menu' | 'play' | 'paused' | 'dead' | 'complete';
+/** `complete`: the level-complete card. `perk`: picking a perk between levels. */
+export type GameState = 'menu' | 'play' | 'paused' | 'dead' | 'complete' | 'perk';
 
 export interface GameOptions {
   seed?: number;
   god: boolean;
   /** ?quality=low forces low graphics quality whatever the saved setting says (e2e uses it). */
   forceQuality?: Quality;
+  /** ?level=N starts runs on level N (1-based; debug and playtesting). */
+  startLevel?: number;
 }
 
 const DEATH_DELAY_MS = 1100;
@@ -46,13 +54,17 @@ export class Game {
   /** Debug-panel frame stats, refreshed once a second. */
   private perf = { windowStart: performance.now(), frames: 0, worstMs: 0, fps: 0, shownWorstMs: 0, shownPeakDelta: 0 };
   private seedCounter: number;
+  /** The run through the campaign: level, perks, XP, banked score. */
+  run: RunState;
+  /** Perk offers come from their own seeded stream, so they never disturb the arena's randomness. */
+  private perkRng: Rng;
   /** Frames drawn so far. Tests use it to know the loop is alive. */
   frames = 0;
 
   constructor(private readonly options: GameOptions) {
     const palette = readPalette();
     const settings = loadSettings();
-    this.renderer = new GameRenderer(this.view, options.forceQuality ?? settings.quality);
+    this.renderer = new GameRenderer(this.view, options.forceQuality ?? settings.quality, palette);
     this.hud = new Hud(palette);
     this.input = new Input(this.view, {
       onPause: () => this.pause(),
@@ -63,6 +75,9 @@ export class Game {
     });
     this.panels = new Panels(this.input.touch);
     this.seedCounter = options.seed ?? Math.floor(Math.random() * 0x7fffffff);
+    this.run = newRun(this.seedCounter);
+    this.run.levelIndex = this.firstLevel();
+    this.perkRng = createRng(this.seedCounter ^ 0x5bd1e995);
     this.cam = {
       mode: 'menu',
       yaw: 0,
@@ -86,11 +101,11 @@ export class Game {
     requestAnimationFrame((t) => this.frame(t));
   }
 
-  /** A fresh arena. With a fixed ?seed= every run is the same arena; otherwise each run differs. */
+  /** A fresh arena for the run's current level. With a fixed ?seed= every run is the same; otherwise each differs. */
   private newWorld(): World {
-    const seed = this.options.seed ?? Math.floor(Math.random() * 0x7fffffff);
+    const seed = (this.options.seed ?? Math.floor(Math.random() * 0x7fffffff)) + this.run.levelIndex * 7919;
     this.seedCounter = seed;
-    const world = createWorld(LEVELS[0], seed);
+    const world = createWorld(LEVELS[this.run.levelIndex], seed, this.run.perks);
     world.invulnerable = this.options.god;
     return world;
   }
@@ -105,8 +120,10 @@ export class Game {
     this.panels.on('restartBtn', () => this.start());
     this.panels.on('resumeBtn', () => this.resume());
     this.panels.on('menuBtn', () => this.toMenu());
-    this.panels.on('completeAgainBtn', () => this.start());
+    this.panels.on('completeNextBtn', () => this.next());
     this.panels.on('completeMenuBtn', () => this.toMenu());
+    this.panels.on('pauseBtn', () => this.pause());
+    this.panels.onPerk((id) => this.pickPerk(id));
     this.panels.on('settingsFromStart', () => this.panels.show('settings'));
     this.panels.on('settingsFromPause', () => this.panels.show('settings'));
     // Back returns to whichever card opened it: the pause card mid-run, otherwise the title card.
@@ -119,12 +136,24 @@ export class Game {
     this.renderer.setFov(s.fov);
     this.renderer.setRenderScale(s.renderScale);
     this.renderer.setQuality(this.options.forceQuality ?? s.quality);
-    this.panels.on('pauseBtn', () => this.pause());
   }
 
   // --- state changes ---
 
+  /** A new run from Level 1, no perks. */
   start(): void {
+    this.run = newRun(this.options.seed ?? Math.floor(Math.random() * 0x7fffffff));
+    this.run.levelIndex = this.firstLevel();
+    this.perkRng = createRng(this.run.seed ^ 0x5bd1e995);
+    this.startLevel();
+  }
+
+  private firstLevel(): number {
+    return Math.min(LEVELS.length - 1, Math.max(0, (this.options.startLevel ?? 1) - 1));
+  }
+
+  /** Play the run's current level: lives full, inventory empty, perks kept. */
+  private startLevel(): void {
     this.audio.unlock();
     this.input.reset();
     this.world = this.newWorld();
@@ -160,6 +189,8 @@ export class Game {
   }
 
   toMenu(): void {
+    this.run = newRun(this.run.seed);
+    this.run.levelIndex = this.firstLevel();
     this.state = 'menu';
     this.input.active = false;
     this.input.reset();
@@ -170,12 +201,15 @@ export class Game {
     this.hud.clearDanger();
   }
 
-  /** Shared by death and level complete: stop input, free the pointer, record the score. Returns whether it is a new best. */
+  /**
+   * Shared by death and level complete: stop input, free the pointer, record the run's score so far.
+   * Returns whether it is a new best.
+   */
   private endRun(): boolean {
     this.input.active = false;
     this.input.releaseLock();
     this.input.reset();
-    this.finalScore = scoreOf(this.world);
+    this.finalScore = this.state === 'dead' ? this.run.score + scoreOf(this.world) : this.run.score;
     const isBest = this.finalScore > this.best;
     if (isBest) {
       this.best = this.finalScore;
@@ -187,17 +221,59 @@ export class Game {
   private complete(): void {
     this.state = 'complete';
     this.danger = 0;
+    // Bank the level into the run before scoring: the run total is what counts as a best.
+    const levelScore = scoreOf(this.world);
+    this.run.score += levelScore;
+    this.run.xp += this.world.xpGained;
+    // Banked: the finished level no longer holds it (else the HUD would count it twice).
+    this.world.xpGained = 0;
     const isBest = this.endRun();
+    const last = this.run.levelIndex >= LEVELS.length - 1;
     this.panels.showComplete({
+      levelNumber: this.run.levelIndex + 1,
+      levelName: this.world.level.name,
       elapsed: this.world.elapsed,
-      score: this.finalScore,
+      score: levelScore,
+      runScore: this.run.score,
       pellets: this.world.pelletsCollected,
       livesLeft: this.world.lives,
+      picks: pendingPicks(this.run),
+      last,
       isBest,
       best: this.best,
     });
     this.panels.setPlayUI(false);
     this.panels.show('complete');
+  }
+
+  /** After a level: spend level-ups on perks, then the next level (or the end of the campaign). */
+  private next(): void {
+    if (pendingPicks(this.run) > 0) {
+      const offer = offerPerks(this.perkRng, this.run.perks);
+      if (offer.length > 0) {
+        this.state = 'perk';
+        this.panels.showPerks(offer, this.run.perks, pendingPicks(this.run));
+        this.panels.show('perk');
+        return;
+      }
+      // Every perk is already owned: the level-up has nothing to buy.
+      this.run.picksSpent = levelForXp(this.run.xp);
+    }
+    if (this.run.levelIndex < LEVELS.length - 1) {
+      this.run.levelIndex++;
+      this.startLevel();
+    } else {
+      // Campaign done (for now): back to the title card; the next start is a new run.
+      this.toMenu();
+    }
+  }
+
+  private pickPerk(id: PerkId): void {
+    if (this.state !== 'perk') return;
+    this.run.perks.push(id);
+    this.run.picksSpent++;
+    this.audio.itemPickedUp();
+    this.next();
   }
 
   private die(): void {
@@ -207,9 +283,11 @@ export class Game {
     const isBest = this.endRun();
     this.panels.showDeath({
       cause: this.world.deathCause ?? 'caught',
+      levelNumber: this.run.levelIndex + 1,
+      levelName: this.world.level.name,
       elapsed: this.world.elapsed,
       score: this.finalScore,
-      length: this.world.snake.cells.length,
+      length: this.world.snakes.reduce((n, s) => n + s.cells.length, 0),
       pellets: this.world.pelletsCollected,
       isBest,
       best: this.best,
@@ -241,7 +319,7 @@ export class Game {
     this.renderer.render(w, this.cam, dt, now);
     if (this.state !== 'menu') {
       this.hud.drawMap(w);
-      this.hud.update(w, this.danger, this.state === 'dead', this.finalScore);
+      this.hud.update(w, this.danger, this.state === 'dead', this.finalScore, this.hudRun(w));
     }
   }
 
@@ -271,7 +349,7 @@ export class Game {
     } else if (this.state === 'menu') {
       this.cam.menuT += dt;
       this.wanderT -= dt;
-      const head = w.snake.cells[0];
+      const head = w.snakes[0]?.cells[0] ?? { x: -1, z: -1 };
       if (this.wanderT <= 0 || (head.x === this.wander.x && head.z === this.wander.z)) {
         const n = w.grid.size;
         this.wander = { x: 1 + w.rng.int(n - 2), z: 1 + w.rng.int(n - 2) };
@@ -289,6 +367,20 @@ export class Game {
       else if (e.type === 'snakeAtePellet') this.audio.gulp();
       else if (e.type === 'snakeStep') this.audio.step(e.distance);
       else if (e.type === 'jumped') this.audio.jump();
+      else if (e.type === 'itemSpawned') this.audio.itemSpawned();
+      else if (e.type === 'itemPickedUp') this.audio.itemPickedUp();
+      else if (e.type === 'itemUsed') this.renderer.playUse();
+      else if (e.type === 'shotFired') this.audio.shotFired();
+      else if (e.type === 'shotHit') this.audio.shotHit(e.target === 'head');
+      else if (e.type === 'snakeStunned') this.hud.flashHit();
+      else if (e.type === 'macheteSwing') this.audio.macheteSwing(e.result);
+      else if (e.type === 'snakeCut' && e.result !== 'bounce') this.renderer.spray(e.x, e.z);
+      else if (e.type === 'snakeSplitWarning') this.audio.splitWarning();
+      else if (e.type === 'wallSmashed') this.audio.wallSmashed(Math.hypot(e.x - this.world.player.x, e.z - this.world.player.z));
+      else if (e.type === 'relicFound') this.audio.relicFound();
+      else if (e.type === 'gateOpened') this.audio.gateOpened();
+      else if (e.type === 'itemSpoiled') this.audio.itemSpoiled();
+      else if (e.type === 'secondWind') this.hud.flashLifeLost();
       else if (e.type === 'lifeLost') {
         this.audio.lifeLost();
         this.hud.flashLifeLost();
@@ -296,14 +388,32 @@ export class Game {
     }
   }
 
+  /** What the HUD shows about the run: level, XP toward the next level-up, the nearest snake for Keen ears. */
+  private hudRun(w: World) {
+    const xp = this.run.xp + w.xpGained;
+    const lv = levelForXp(xp);
+    let into = xp;
+    for (let i = 0; i < lv; i++) into -= xpForNextLevel(i);
+    const near = nearestSnake(w);
+    return {
+      levelNumber: this.run.levelIndex + 1,
+      levelName: w.level.name,
+      xpLevel: lv,
+      xpFraction: into / xpForNextLevel(lv),
+      keenEars: w.perks.includes('keenEars') && !!near && gapToSnake(w) < BALANCE.perks.keenEarsRange,
+      snakeBearing: near ? Math.atan2(-(near.pos[0].x - w.player.x), -(near.pos[0].z - w.player.z)) - w.player.yaw : 0,
+    };
+  }
+
   /** A text dump for the ?debug=1 panel. */
   debugText(): string {
     const w = this.world;
-    const s = w.snake;
+    const s = w.snakes[0];
     return [
-      `state ${this.state}  seed ${this.seed}`,
+      `state ${this.state}  seed ${this.seed}  level ${this.run.levelIndex + 1}  xp ${this.run.xp + w.xpGained}  perks ${this.run.perks.join(',') || '-'}`,
       `t ${w.elapsed.toFixed(1)}s  score ${scoreOf(w)}`,
-      `snake len ${s.cells.length} (+${s.pendingGrow})  step ${s.interval.toFixed(3)}s  lives ${w.lives}`,
+      `snakes ${w.snakes.map((q) => `${q.cells.length}${q.stump > 0 ? 's' : ''}${q.stunTimer > 0 ? '*' : ''}`).join(' ')}  step ${s ? s.interval.toFixed(3) : '-'}s  lives ${w.lives}`,
+      `items ${w.inventory.map((h, i) => `${i === w.selectedSlot ? '>' : ''}${h ? `${h.item}/${h.tier} x${h.uses} ${h.spoilLeft.toFixed(0)}s` : '-'}`).join('  ')}  drops ${w.drops.length}`,
       `player ${w.player.x.toFixed(1)},${w.player.z.toFixed(1)}  stam ${clamp(w.player.stamina, 0, 1).toFixed(2)}`,
       `gap ${gapToSnake(w).toFixed(1)}  sprint ${BALANCE.player.sprintSpeed}`,
       `fps ${this.perf.fps.toFixed(0)}  worst frame ${this.perf.shownWorstMs.toFixed(0)}ms  mouse peak ${this.perf.shownPeakDelta.toFixed(0)}px`,

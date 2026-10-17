@@ -33,7 +33,7 @@ test('title card loads, a run starts, and nothing throws', async ({ page }) => {
 
   const info = await page.evaluate(() => {
     const g = window.__snake;
-    return g ? { state: g.state, frames: g.frames, elapsed: g.world.elapsed, len: g.world.snake.cells.length } : null;
+    return g ? { state: g.state, frames: g.frames, elapsed: g.world.elapsed, len: g.world.snakes[0].cells.length } : null;
   });
   expect(info).not.toBeNull();
   expect(info?.state).toBe('play');
@@ -62,8 +62,8 @@ test('the snake can end a run and the game-over card shows', async ({ page }) =>
     const g = window.__snake;
     if (!g) return;
     g.world.lives = 1;
-    g.world.player.x = g.world.snake.pos[0].x + 8;
-    g.world.player.z = g.world.snake.pos[0].z;
+    g.world.player.x = g.world.snakes[0].pos[0].x + 8;
+    g.world.player.z = g.world.snakes[0].pos[0].z;
   });
   await expect(page.locator('#panelDead')).toBeVisible({ timeout: 45_000 });
   await page.screenshot({ path: 'test-results/dead.png' });
@@ -72,24 +72,88 @@ test('the snake can end a run and the game-over card shows', async ({ page }) =>
   await expect(page.locator('#hud')).toBeVisible();
 });
 
-test('reaching the goal shows the level-complete card', async ({ page }) => {
+test('campaign: win Level 1, pick a perk, Level 2 starts with it', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
 
   await page.goto('/?debug=1&god=1&seed=7&quality=low');
   await page.click('#startBtn');
   await expect(page.locator('#hud')).toBeVisible();
-  // Skip most of Level 1's 90 s survive goal instead of waiting for it.
+  // Skip most of Level 1's 90 s survive goal, with enough XP banked for one level-up.
   await page.evaluate(() => {
     const g = window.__snake;
-    if (g) g.world.elapsed = 89.5;
+    if (!g) return;
+    g.world.xpGained = 3;
+    g.world.elapsed = 89.5;
   });
   await expect(page.locator('#panelComplete')).toBeVisible({ timeout: 15_000 });
   await page.screenshot({ path: 'test-results/complete.png' });
   expect(await page.evaluate(() => window.__snake?.state)).toBe('complete');
-  await page.click('#completeAgainBtn');
+  await expect(page.locator('#completeNextBtn')).toHaveText('Pick perks');
+  await page.click('#completeNextBtn');
+  await expect(page.locator('#panelPerk')).toBeVisible();
+  await expect(page.locator('#perkChoices .perk')).toHaveCount(3);
+  await page.screenshot({ path: 'test-results/perk.png' });
+  const picked = await page.locator('#perkChoices .perk').first().getAttribute('data-perk');
+  await page.locator('#perkChoices .perk').first().click();
+  // Level 2 starts, and the perk is in the run and in the new level.
   await expect(page.locator('#hud')).toBeVisible();
-  expect(await page.evaluate(() => window.__snake?.state)).toBe('play');
+  await expect(page.locator('#gLevel')).toContainText('Ruins');
+  const state = await page.evaluate(() => ({ s: window.__snake?.state, perks: window.__snake?.world.perks, level: window.__snake?.run.levelIndex }));
+  expect(state.s).toBe('play');
+  expect(state.level).toBe(1);
+  expect(state.perks).toContain(picked);
+  expect(errors).toEqual([]);
+});
+
+test('a machete cut splits the snake in two', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/?debug=1&god=1&seed=7&quality=low');
+  await page.click('#startBtn');
+  await expect(page.locator('#hud')).toBeVisible();
+  // A long, frozen snake right in front of the player; a machete in hand.
+  await page.evaluate(() => {
+    const w = window.__snake?.world;
+    if (!w) return;
+    const c = (i: number) => (i + 0.5) * 2 - 48;
+    for (let z = 16; z <= 28; z++) for (let x = 10; x <= 34; x++) w.pillars[z * 48 + x] = 0;
+    const cells: Array<{ x: number; z: number }> = [];
+    for (let i = 0; i < 16; i++) cells.push({ x: 30 - i, z: 22 });
+    const s = w.snakes[0];
+    s.cells = cells;
+    s.prev = cells.map((q) => ({ ...q }));
+    s.timer = 0;
+    s.pos = cells.map((q) => ({ x: c(q.x), z: c(q.z) }));
+    s.stunTimer = 1e6;
+    w.inventory[0] = { item: 'machete', tier: 'white', uses: 5, spoilLeft: 45, spoilTotal: 45 };
+    w.selectedSlot = 0;
+    w.player.x = c(23);
+    w.player.z = c(22) + 1.7;
+    w.player.yaw = 0;
+    w.player.pitch = -0.32;
+  });
+  await page.keyboard.press('KeyF');
+  await expect.poll(() => page.evaluate(() => window.__snake?.world.snakes.length), { timeout: 10_000 }).toBe(2);
+  await expect(page.locator('#hLen')).toContainText('×2');
+  expect(errors).toEqual([]);
+});
+
+test('Level 3 (Riverside) loads with its river and dock', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/?debug=1&god=1&seed=7&quality=low&level=3');
+  await page.click('#startBtn');
+  await expect(page.locator('#hud')).toBeVisible();
+  await expect(page.locator('#gLevel')).toContainText('Riverside');
+  const info = await page.evaluate(() => {
+    const w = window.__snake?.world;
+    return w ? { size: w.grid.size, water: Array.from(w.tiles).filter((t) => t === 3).length, frames: window.__snake?.frames ?? 0 } : null;
+  });
+  expect(info?.size).toBe(64);
+  expect(info?.water).toBeGreaterThan(100);
+  await page.waitForTimeout(1500);
+  await page.screenshot({ path: 'test-results/level3.png' });
   expect(errors).toEqual([]);
 });
 
@@ -109,5 +173,35 @@ test('settings open from the title, apply, and persist across a reload', async (
   await page.reload();
   await page.click('#settingsFromStart');
   await expect(page.locator('#set-fov')).toHaveValue('90');
+  expect(errors).toEqual([]);
+});
+
+test('an item is picked up, used, and spoils', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+
+  await page.goto('/?debug=1&god=1&seed=7&quality=low');
+  await page.click('#startBtn');
+  await expect(page.locator('#hud')).toBeVisible();
+  // A gold slingshot right under the player.
+  await page.evaluate(() => {
+    const w = window.__snake?.world;
+    if (!w) return;
+    const cell = (v: number) => Math.floor((v + w.grid.half) / w.grid.cell);
+    w.drops.push({ id: 999, item: 'slingshot', tier: 'gold', x: cell(w.player.x), z: cell(w.player.z) });
+  });
+  await expect(page.locator('#slot0')).toHaveClass(/gold/, { timeout: 15_000 });
+  await expect(page.locator('#slotUses0')).toHaveText('6');
+  await expect(page.locator('#slot0')).toHaveClass(/selected/);
+  await page.screenshot({ path: 'test-results/inventory.png' });
+
+  await page.keyboard.press('KeyF');
+  await expect(page.locator('#slotUses0')).toHaveText('5', { timeout: 10_000 });
+
+  await page.evaluate(() => {
+    const held = window.__snake?.world.inventory[0];
+    if (held) held.spoilLeft = 0.01;
+  });
+  await expect(page.locator('#slot0')).toHaveClass(/empty/, { timeout: 10_000 });
   expect(errors).toEqual([]);
 });

@@ -8,7 +8,7 @@ import type { World } from '../src/sim/types';
 
 /** Put the player on the snake's head so the next update counts as a catch. */
 function getCaught(w: World): void {
-  const head = w.snake.pos[0];
+  const head = w.snakes[0].pos[0];
   w.player.x = head.x;
   w.player.z = head.z;
   updateWorld(w, NO_INPUT, 0.016);
@@ -43,14 +43,14 @@ describe('lives', () => {
   it('the snake stays as it was when the player respawns', () => {
     const w = createWorld(level01, 3);
     for (let i = 0; i < 30; i++) updateWorld(w, NO_INPUT, 0.05);
-    const cells = w.snake.cells.map((c) => ({ ...c }));
+    const cells = w.snakes[0].cells.map((c) => ({ ...c }));
     const elapsed = w.elapsed;
-    const head = w.snake.pos[0];
+    const head = w.snakes[0].pos[0];
     w.player.x = head.x;
     w.player.z = head.z;
     updateWorld(w, NO_INPUT, 0);
     expect(w.lives).toBe(BALANCE.lives.perLevel - 1);
-    expect(w.snake.cells).toEqual(cells);
+    expect(w.snakes[0].cells).toEqual(cells);
     // Progress toward a survive goal is kept.
     expect(w.elapsed).toBe(elapsed);
   });

@@ -116,12 +116,12 @@ export class SnakeBody {
   }
 
   /** Half width and half height of the body at `s` segments from the head. */
-  private profile(s: number, length: number, sEnd: number, front: FrontEnd, back: BackEnd): [number, number] {
+  private profile(s: number, length: number, sEnd: number, front: FrontEnd, back: BackEnd, jumpable: number): [number, number] {
     let hw = BODY_HALF_W;
     let hh = BODY_HALF_H;
     if (back === 'tail') {
       // The last `jumpableTail` segments are low: drop to tail size across the half segment before them.
-      const lowFrom = length - BALANCE.snake.jumpableTail;
+      const lowFrom = length - jumpable;
       const k = smooth(lowFrom - 0.5 - TAIL_TAPER_SEGMENTS, lowFrom - 0.5, s);
       hw += (TAIL_HALF_W - hw) * k;
       hh += (TAIL_HALF_H - hh) * k;
@@ -146,7 +146,7 @@ export class SnakeBody {
    * Rebuild the body. `materialHead` is how many segments of body have moved past a fixed point
    * (it grows by one per snake step); texture coordinates follow it, so the scales travel with the body.
    */
-  update(pos: Vec2[], materialHead: number, front: FrontEnd = 'head', back: BackEnd = 'tail'): void {
+  update(pos: Vec2[], materialHead: number, front: FrontEnd = 'head', back: BackEnd = 'tail', jumpable: number = BALANCE.snake.jumpableTail): void {
     const length = pos.length;
     if (length < 2) {
       this.geometry.setDrawRange(0, 0);
@@ -214,7 +214,7 @@ export class SnakeBody {
       // Side vector (horizontal, perpendicular to the tangent).
       const sx = tz;
       const sz = -tx;
-      const [hw, hh] = this.profile(s, length, sEnd, front, back);
+      const [hw, hh] = this.profile(s, length, sEnd, front, back, jumpable);
       const sway = SLITHER_AMPLITUDE * (hw / BODY_HALF_W) * smooth(0.5, 2, s) * Math.sin(((materialHead - s) / SLITHER_WAVELENGTH) * Math.PI * 2);
       const ox = cx[r] + sx * sway;
       const oz = cz[r] + sz * sway;
@@ -253,6 +253,12 @@ export class SnakeBody {
     cap.position.set(x, y, z);
     cap.rotation.set(0, Math.atan2(dx, dz), 0);
     cap.scale.set(hw, hh * (1 + BELLY_FLAT) * 0.5, 1);
+  }
+
+  /** 0..1: a warm glow over the skin (the warning before a growth split). */
+  setFlash(k: number): void {
+    const m = this.mesh.material as THREE.MeshStandardMaterial;
+    m.emissive.setRGB(0.55 * k, 0.45 * k, 0.12 * k);
   }
 
   setShadows(on: boolean): void {

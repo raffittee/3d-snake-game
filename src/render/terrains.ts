@@ -21,6 +21,14 @@ export interface TerrainLook {
   groundTint: string;
   wall: PbrSet;
   pillar: PbrSet;
+  /** Multiplies the pillar texture (some stone textures read too pale on a standing rock). */
+  pillarTint?: string;
+  /** Ruins: low walls and crumbling walls (fall back to `wall`). Riverside: bridge and dock planks. */
+  lowWall?: PbrSet;
+  crumble?: PbrSet;
+  planks?: PbrSet;
+  /** Riverside: the river bank (rocks along the water). */
+  bank?: PbrSet;
   fog: { color: string; near: number; far: number };
   sun: { color: string; intensity: number; direction: [number, number, number] };
   /** Fill light used when quality is low (no image-based lighting). */
@@ -45,6 +53,43 @@ export const TERRAIN_LOOKS: Partial<Record<TerrainId, TerrainLook>> = {
     // Spring green, pale sky, soft yellow, stone grey, deep shade.
     palette: ['#6f8f3a', '#cfdcea', '#e8d98a', '#8b8f86', '#26301f'],
   },
+};
+
+TERRAIN_LOOKS.ruins = {
+  sky: 'kloofendal_43d_clear_puresky_1k.hdr',
+  envIntensity: 1,
+  backgroundIntensity: 1,
+  ground: { name: 'grassy_cobblestone', tile: 3 },
+  groundTint: '#e6dcc4',
+  wall: { name: 'mossy_sandstone', tile: 3 },
+  pillar: { name: 'old_stone_wall', tile: 2.5 },
+  pillarTint: '#8f8a80',
+  lowWall: { name: 'mossy_sandstone', tile: 2.5 },
+  crumble: { name: 'old_stone_wall', tile: 2.5 },
+  fog: { color: '#d8cdb6', near: 30, far: 140 },
+  sun: { color: '#ffe6c2', intensity: 3, direction: [0.35, 0.7, 0.6] },
+  hemi: { sky: '#e7dccb', ground: '#6b5a3e', intensity: 1.6 },
+  exposure: 1,
+  // Sandstone, moss, grey stone, warm sky, deep shade.
+  palette: ['#c9a873', '#6f7d3c', '#8b8a84', '#e7dccb', '#2c2619'],
+};
+
+TERRAIN_LOOKS.riverside = {
+  sky: 'kloofendal_38d_partly_cloudy_puresky_1k.hdr',
+  envIntensity: 1,
+  backgroundIntensity: 1,
+  ground: { name: 'grass_ground', tile: 4 },
+  groundTint: '#d6e3b8',
+  wall: { name: 'castle_wall_slates', tile: 3 },
+  pillar: { name: 'mossy_rock', tile: 2.5 },
+  planks: { name: 'brown_planks_04', tile: 2 },
+  bank: { name: 'river_small_rocks', tile: 2 },
+  fog: { color: '#bcccd0', near: 40, far: 170 },
+  sun: { color: '#fff3e0', intensity: 2.7, direction: [0.5, 0.7, 0.45] },
+  hemi: { sky: '#cfe0e8', ground: '#4c5a3c', intensity: 1.6 },
+  exposure: 1,
+  // River teal, grass green, wood brown, pale sky, deep shade.
+  palette: ['#2f6f7a', '#6f8f3a', '#7a5634', '#cfe0e8', '#1f2a24'],
 };
 
 /** Falls back to plains until each terrain has its own look. */

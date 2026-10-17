@@ -1,4 +1,4 @@
-import type { Cell } from '../sim/types';
+import type { Cell, ItemId, Tier } from '../sim/types';
 
 /** Terrain ids match docs/GAME_DESIGN.md. Only 'plains' is implemented so far. */
 export type TerrainId =
@@ -14,14 +14,25 @@ export type TerrainId =
   | 'cave';
 
 /** Snake AI behaviors, one file each under src/ai. See docs/GAME_DESIGN.md for the full list. */
-export type BehaviorId = 'chase';
+export type BehaviorId = 'chase' | 'predict';
 
 /** How a level ends. `either` is met as soon as any one of its goals is met. */
 export type Goal =
   | { kind: 'endless' }
   | { kind: 'survive'; seconds: number }
   | { kind: 'collect'; pellets: number }
-  | { kind: 'either'; goals: Goal[] };
+  | { kind: 'either'; goals: Goal[] }
+  /** Find this many relics, then reach the gate (it opens once the last relic is found). */
+  | { kind: 'relicsThenGate'; relics: number }
+  /** Reach the exit (the far dock on Riverside). */
+  | { kind: 'reachExit' };
+
+/** How the level's ground is laid out. `scatter` = open plain with pillars; `ruins` = walled rooms. */
+export type LevelLayout =
+  | { kind: 'scatter' }
+  | { kind: 'ruins'; rooms: number; crumbleShare: number }
+  /** A river across the map from west to east, `width` cells of water, with plank bridges. */
+  | { kind: 'river'; width: number; bridges: number; amplitude: number };
 
 /** Everything that makes a level different. A new level should be mostly a new config file. */
 export interface LevelConfig {
@@ -34,6 +45,12 @@ export interface LevelConfig {
   pillarCount: number;
   /** The player's start and respawn cell. Pillars keep clear of it. */
   start: Cell;
+  /** Ground layout; plain when omitted. */
+  layout?: LevelLayout;
+  /** Riverside: each pellet adds a speed boost that fades out over `seconds`; boosts stack. */
+  pelletBoost?: { amount: number; seconds: number };
+  /** The exit: the gate (Ruins) or the far dock (Riverside), a cell near the arena's edge. */
+  gate?: Cell;
   /** Tall, always-visible shapes to find your way by. Each one fills its cell like a pillar. */
   landmarks: Landmark[];
   snake: {
@@ -46,11 +63,30 @@ export interface LevelConfig {
     rampPerSecond: number;
     growEverySeconds: number;
     maxLength: number;
+    /** Can it be beaten here (shrunk under 3 segments)? If not, cuts bounce off at `floor` length. */
+    defeatable: boolean;
+    floor: number;
+    /** Growth split: past this length the snake splits by itself. Omit for none. */
+    splitAt?: number;
   };
   pelletCount: number;
+  items: LevelItems;
   goal: Goal;
   /** Short text for the corner guide. Progress is not stored here; `guideLines` derives it from the world. */
   guide: LevelGuide;
+}
+
+/** Which items fall in a level, how often, and how rare the better tiers are. */
+export interface LevelItems {
+  /** Items that can drop here, picked by weight. Empty = no drops. */
+  drops: Array<{ item: ItemId; weight: number }>;
+  /** Seconds before the first drop, then between drops. */
+  firstDropAfter: number;
+  every: number;
+  /** No new drop while this many lie on the ground. */
+  maxOnGround: number;
+  /** Chance of each tier; they should add up to 1. */
+  tierOdds: Record<Tier, number>;
 }
 
 export type LandmarkKind = 'tower' | 'tree';

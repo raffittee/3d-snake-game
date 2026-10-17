@@ -56,6 +56,14 @@ export const BALANCE = {
     /** The last N segments shrink toward the tail. */
     taperSegments: 5,
     taperMinScale: 0.6,
+    /** A piece cut off behind the cut needs this many segments to become a snake; shorter ones wither. */
+    minSplitLength: 4,
+    /** A split-off snake is dazed this long while it grows its head. */
+    splitDazeSeconds: 1,
+    /** Seconds a severed piece twitches and withers before it is gone. */
+    severedLife: 1.6,
+    /** Growth split: the body flashes this long before the snake splits by itself. */
+    splitWarnSeconds: 2,
     /** Being squeezed deeper than this into a body segment (after push-out) is a crush. */
     crushOverlap: 0.22,
   },
@@ -70,6 +78,90 @@ export const BALANCE = {
     respawnAfterSnakeEats: 3,
     /** Delay between respawn attempts while below `count`. */
     respawnRetry: 2.5,
+  },
+
+  items: {
+    /** Inventory slots (a perk can add one later). */
+    slots: 2,
+    /** Walk within this distance of a drop to pick it up. */
+    pickupRadius: 1.1,
+    /** Drops never land closer than this to the player. */
+    minSpawnDistance: 10,
+    /** Rarer tiers: more uses and slower spoiling, multiplied by this. */
+    tierScale: { white: 1, blue: 1.5, gold: 2 },
+    /** Base uses and seconds until it spoils (white tier). */
+    defs: {
+      slingshot: {
+        uses: 3,
+        spoilSeconds: 40,
+        /** A head hit freezes the snake this long. A second hit resets it, it never stacks. */
+        stunSeconds: 2,
+        /** The stone: launch speed, a light gravity so it drops a little, lifetime, size. */
+        stoneSpeed: 40,
+        stoneGravity: 6,
+        stoneLife: 1.5,
+        stoneRadius: 0.12,
+      },
+      machete: {
+        uses: 5,
+        spoilSeconds: 45,
+        /** A swing cuts the snake segment under the crosshair within this distance from your eye. */
+        reach: 2.6,
+      },
+      /** Swim ring: `uses` are seconds in deep water; they drain only while you swim. */
+      swimRing: { uses: 30, spoilSeconds: 60 },
+    },
+  },
+
+  xp: {
+    /** XP per pellet you collect. */
+    perPellet: 1,
+    /** XP for the first level-up, then this much more for each one after. */
+    firstLevelUp: 3,
+    stepPerLevel: 2,
+    /** Perks offered per level-up (pick 1). */
+    perksOffered: 3,
+  },
+
+  perks: {
+    /** Big lungs: 30% more stamina. */
+    bigLungs: 1.3,
+    /** Preserver: items spoil at this rate. */
+    preserverSpoilRate: 0.5,
+    /** Spring legs: launch speed multiplier (the apex goes from ~1.2 to ~1.4). */
+    springLegsJump: 1.08,
+    /** Second wind: how far a catch knocks you back, and the grace after. */
+    secondWindKnockback: 5,
+    secondWindGrace: 1.5,
+    /** Keen ears: the arrow shows when the nearest snake head is within this gap. */
+    keenEarsRange: 16,
+  },
+
+  arena: {
+    /** Pillars and landmarks stop stones below this height (the rocks stand up to 3.4). */
+    solidHeight: 3.4,
+    /** Ruins: a low wall you jump (below the ~1.2 jump apex); a crumbling wall you cannot. */
+    lowWallHeight: 0.7,
+    crumbleHeight: 2.4,
+    /** Walk within this distance of a relic to pick it up, or of the open gate to leave. */
+    relicPickupRadius: 1.1,
+    gateRadius: 1.4,
+  },
+
+  river: {
+    /** The narrowest the river gets, in cells. */
+    minWidth: 5,
+    /** Swimming speed as a share of walking speed (no sprint, no jump in water). */
+    swimSpeed: 0.55,
+    /** The snake steps this much slower while its head is in water. */
+    snakeSwimSlow: 1.6,
+    /** Eye height while swimming (the water is around your chest). */
+    swimEyeDrop: 0.85,
+  },
+
+  ai: {
+    /** Predict: aim for where the player will be this many seconds from now. */
+    predictSeconds: 1,
   },
 
   lives: {

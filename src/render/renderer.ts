@@ -5,11 +5,14 @@ import type { Quality } from '../settings';
 import { lerp, lerpAngle } from '../sim/math';
 import type { World } from '../sim/types';
 import { buildArena, disposeArena } from './arena';
+import { LayoutViews } from './layoutViews';
 import { loadSky } from './assets';
+import { DropViews, StoneViews } from './drops';
+import type { Palette } from './palette';
 import { PelletViews } from './pellets';
-import { SnakeBody } from './snakeBody';
-import { SnakeHead } from './snakeHead';
+import { SnakeViews } from './snakes';
 import { terrainLook } from './terrains';
+import { Viewmodel } from './viewmodel';
 import type { TerrainLook } from './terrains';
 
 /** What the camera needs besides the world. Owned by the game layer. */
@@ -49,23 +52,23 @@ export class GameRenderer {
   private readonly pmrem: THREE.PMREMGenerator;
   private envMap: THREE.Texture | null = null;
   private arena = new THREE.Group();
-  private body: SnakeBody;
-  private readonly head = new SnakeHead();
+  private layout: LayoutViews | null = null;
+  private readonly snakes: SnakeViews;
   private readonly pellets: PelletViews;
+  private readonly drops: DropViews;
+  private readonly stones: StoneViews;
+  private readonly viewmodel = new Viewmodel();
   private look: TerrainLook = terrainLook('plains');
   private world: World | null = null;
   private quality: Quality = DEFAULT_SETTINGS.quality;
   private renderScale = DEFAULT_SETTINGS.renderScale;
-  private headYaw = Math.PI / 2;
-  /** Texture coordinate of the body at the head; grows by one per snake step so the scales travel. */
-  private stepsSeen = 0;
-  private lastHead = { x: Number.NaN, z: Number.NaN };
 
-  constructor(canvas: HTMLCanvasElement, quality: Quality) {
+  constructor(canvas: HTMLCanvasElement, quality: Quality, palette: Palette) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    this.renderer.autoClear = false;
     this.pmrem = new THREE.PMREMGenerator(this.renderer);
     this.scene.add(this.sun, this.sun.target, this.hemi);
     this.sun.shadow.mapSize.set(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
@@ -73,9 +76,10 @@ export class GameRenderer {
     this.sun.shadow.normalBias = 0.04;
     this.sun.shadow.radius = 3;
     this.scene.add(this.arena);
-    this.body = new SnakeBody(BALANCE.snake.maxLength, RINGS_PER_SEGMENT[quality]);
-    this.scene.add(this.body.mesh, this.head.group);
+    this.snakes = new SnakeViews(this.scene, RINGS_PER_SEGMENT[quality], BALANCE.snake.maxLength);
     this.pellets = new PelletViews(this.scene);
+    this.drops = new DropViews(this.scene, palette.tiers);
+    this.stones = new StoneViews(this.scene);
     this.camera.rotation.order = 'YXZ';
     this.applyLook();
     this.setQuality(quality);
@@ -100,11 +104,10 @@ export class GameRenderer {
     this.renderer.shadowMap.enabled = high;
     this.sun.castShadow = high;
     this.scene.environment = high ? this.envMap : null;
+    this.viewmodel.scene.environment = this.scene.environment;
     this.hemi.intensity = high ? this.look.hemi.intensity * 0.25 : this.look.hemi.intensity;
     if (changed) {
-      this.scene.remove(this.body.mesh);
-      this.body = new SnakeBody(BALANCE.snake.maxLength, RINGS_PER_SEGMENT[quality]);
-      this.scene.add(this.body.mesh);
+      this.snakes.setRings(RINGS_PER_SEGMENT[quality]);
       // Shadow on/off changes shader programs.
       this.scene.traverse((o) => {
         if (o instanceof THREE.Mesh) for (const m of Array.isArray(o.material) ? o.material : [o.material]) m.needsUpdate = true;
@@ -120,14 +123,42 @@ export class GameRenderer {
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    this.viewmodel.setAspect(w / h);
   }
 
   render(world: World, view: CameraView, dt: number, now: number): void {
     if (world !== this.world) this.setWorld(world);
     this.pellets.sync(world, dt);
+    this.drops.sync(world, dt);
+    this.stones.sync(world);
+    this.layout?.update(world, dt, now);
     this.placeSnake(world, view, dt, now);
-    this.updateCamera(world, view, dt);
+    this.updateCamera(world, view, dt, now);
+    // Two passes: the world, then the first-person hands on top with a fresh depth buffer,
+    // so they never clip into rocks or the snake.
+    this.renderer.clear();
     this.renderer.render(this.scene, this.camera);
+    const p = world.player;
+    this.viewmodel.update(world.inventory[world.selectedSlot] ?? null, view.mode === 'play', dt, view.bob, p.moving && p.y === 0 && !p.swimming, view.yaw, view.pitch, view.reducedMotion, p.swimming);
+    this.renderer.clearDepth();
+    this.renderer.render(this.viewmodel.scene, this.viewmodel.camera);
+  }
+
+  /** How far the eye sits lower while swimming (eased in and out, with a gentle bob). */
+  private swimEase = 0;
+  private swimDrop(swimming: boolean, now: number): number {
+    this.swimEase += ((swimming ? 1 : 0) - this.swimEase) * 0.12;
+    return this.swimEase * (BALANCE.river.swimEyeDrop + Math.sin(now * 0.003) * 0.05);
+  }
+
+  /** Blood where a cut landed. */
+  spray(x: number, z: number): void {
+    this.snakes.spray(x, z);
+  }
+
+  /** The hands play the selected item's use motion. */
+  playUse(): void {
+    this.viewmodel.playUse();
   }
 
   // --- building ---
@@ -150,7 +181,7 @@ export class GameRenderer {
         this.scene.background = hdr;
         this.scene.backgroundIntensity = look.backgroundIntensity;
         this.scene.environmentIntensity = look.envIntensity;
-        if (this.quality === 'high') this.scene.environment = this.envMap;
+        if (this.quality === 'high') this.scene.environment = this.viewmodel.scene.environment = this.envMap;
       })
       .catch((err: unknown) => console.warn('Sky failed to load', err));
   }
@@ -166,12 +197,13 @@ export class GameRenderer {
     this.scene.remove(this.arena);
     disposeArena(this.arena);
     this.arena = buildArena(world, look);
+    this.layout = new LayoutViews(world, look);
+    this.arena.add(this.layout.group);
     this.scene.add(this.arena);
     this.fitSunToArena(world);
     this.pellets.clear();
-    this.headYaw = Math.PI / 2;
-    this.stepsSeen = 0;
-    this.lastHead = { x: Number.NaN, z: Number.NaN };
+    this.drops.clear();
+    this.snakes.clear();
   }
 
   /** The sun's shadow camera covers exactly the arena, so shadow detail scales with map size. */
@@ -194,29 +226,11 @@ export class GameRenderer {
   // --- per frame ---
 
   private placeSnake(world: World, view: CameraView, dt: number, now: number): void {
-    const { snake } = world;
-    const c0 = snake.cells[0];
-    if (c0.x !== this.lastHead.x || c0.z !== this.lastHead.z) {
-      if (!Number.isNaN(this.lastHead.x)) this.stepsSeen++;
-      this.lastHead = { x: c0.x, z: c0.z };
-    }
-    const t = snake.interval > 0 ? Math.min(1, snake.timer / snake.interval) : 0;
-    this.body.update(snake.pos, this.stepsSeen + t);
-
-    const p0 = snake.prev[0] ?? c0;
-    const dx = c0.x - p0.x;
-    const dz = c0.z - p0.z;
-    if (dx || dz) this.headYaw = lerpAngle(this.headYaw, Math.atan2(dx, dz), Math.min(1, dt * 14));
-    if (view.mode !== 'dead') {
-      this.head.group.position.set(snake.pos[0].x, 0, snake.pos[0].z);
-      this.head.group.rotation.set(0, this.headYaw, 0);
-      this.head.setJaw(0);
-    }
-    this.head.flick(now);
+    this.snakes.update(world, view, dt, now, world.killerId);
   }
 
-  private updateCamera(world: World, view: CameraView, dt: number): void {
-    const { player, snake, grid } = world;
+  private updateCamera(world: World, view: CameraView, dt: number, now: number): void {
+    const { player, grid } = world;
     if (view.mode === 'menu') {
       const a = view.menuT * 0.1;
       const radius = Math.min(grid.half * 1.05, MENU_ORBIT_MAX);
@@ -230,12 +244,15 @@ export class GameRenderer {
       // The head stays on its body: it rears up and opens its jaws, and the camera backs off to
       // DEATH_CAM_DISTANCE in front of the snout so you look into them. (Sliding the head to the
       // camera instead left the neck running through the camera.)
-      const h = snake.pos[0];
+      const killer = world.snakes.find((s) => s.id === world.killerId) ?? world.snakes[0];
+      const killerView = this.snakes.view(killer?.id ?? null);
+      if (!killer || !killerView) return;
+      const h = killer.pos[0];
       const k = Math.min(1, view.deathT / 0.35);
       const away = Math.hypot(player.x - h.x, player.z - h.z);
       // Caught: the head is on top of you, so back off along its heading. Crushed: back off away from it.
-      const dirX = away > 0.5 ? (player.x - h.x) / away : Math.sin(this.headYaw);
-      const dirZ = away > 0.5 ? (player.z - h.z) / away : Math.cos(this.headYaw);
+      const dirX = away > 0.5 ? (player.x - h.x) / away : Math.sin(killerView.headYaw);
+      const dirZ = away > 0.5 ? (player.z - h.z) / away : Math.cos(killerView.headYaw);
       const want = Math.max(away, DEATH_CAM_DISTANCE);
       const limit = grid.half - 0.5;
       camX = Math.min(limit, Math.max(-limit, lerp(player.x, h.x + dirX * want, k)));
@@ -243,17 +260,20 @@ export class GameRenderer {
       const target = Math.atan2(-(h.x - camX), -(h.z - camZ));
       view.yaw = lerpAngle(view.yaw, target, Math.min(1, dt * 10));
       view.pitch = lerp(view.pitch, -0.08, Math.min(1, dt * 6));
-      this.head.group.position.set(h.x, lerp(0, 0.45, k), h.z);
+      const head = killerView.head;
+      head.group.position.set(h.x, lerp(0, 0.45, k), h.z);
+      head.group.scale.setScalar(1);
       // Snout toward the camera, tipped up.
-      this.head.group.rotation.set(-0.25 * k, lerpAngle(this.headYaw, Math.atan2(camX - h.x, camZ - h.z), k), 0);
-      this.head.setJaw(Math.min(1, view.deathT / 0.5));
+      head.group.rotation.set(-0.25 * k, lerpAngle(killerView.headYaw, Math.atan2(camX - h.x, camZ - h.z), k), 0);
+      head.setJaw(Math.min(1, view.deathT / 0.5));
+      head.flick(now);
     }
     const bob = view.reducedMotion ? 0 : Math.sin(view.bob) * 0.05;
     const shake = view.reducedMotion ? 0 : view.mode === 'dead' ? Math.max(0, 0.25 - view.deathT * 0.25) : 0.05 * view.danger * view.danger;
     const sink = view.mode === 'dead' ? Math.min(0.4, view.deathT) : 0;
     this.camera.position.set(
       camX + (Math.random() - 0.5) * shake,
-      BALANCE.player.eyeHeight + player.y + bob + (Math.random() - 0.5) * shake - sink,
+      BALANCE.player.eyeHeight + player.y + bob + (Math.random() - 0.5) * shake - sink - this.swimDrop(player.swimming, now),
       camZ + (Math.random() - 0.5) * shake,
     );
     this.camera.rotation.set(view.pitch, view.yaw, 0);

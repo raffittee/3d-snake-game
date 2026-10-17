@@ -29,8 +29,18 @@ export const level01: LevelConfig = {
     rampPerSecond: 0.0019,
     growEverySeconds: BALANCE.snake.growEverySeconds,
     maxLength: BALANCE.snake.maxLength,
+    defeatable: false,
+    floor: 5,
   },
   pelletCount: 5,
+  // The slingshot first drops here. Mostly white; gold is a rare treat.
+  items: {
+    drops: [{ item: 'slingshot', weight: 1 }],
+    firstDropAfter: 10,
+    every: 22,
+    maxOnGround: 2,
+    tierOdds: { white: 0.8, blue: 0.17, gold: 0.03 },
+  },
   goal: {
     kind: 'either',
     goals: [

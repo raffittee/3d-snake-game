@@ -21,6 +21,10 @@ export class Input {
   private lookPitch = 0;
   /** Set on a Space press, cleared when sampled, so holding Space jumps once. */
   private jumpQueued = false;
+  /** Same idea for items: use once per click / F press; slot picks from number keys and the wheel. */
+  private useQueued = false;
+  private slotQueued = -1;
+  private cycleQueued = 0;
   /** Largest single mouse delta in pixels since the last `takePeakDelta()`. Debug panel only. */
   private peakDelta = 0;
   /** Only the game layer knows when input should be acted on. */
@@ -54,6 +58,9 @@ export class Input {
     this.look.id = -1;
     this.lookYaw = this.lookPitch = 0;
     this.jumpQueued = false;
+    this.useQueued = false;
+    this.slotQueued = -1;
+    this.cycleQueued = 0;
     this.stick.hidden = true;
     this.dragging = false;
   }
@@ -101,12 +108,18 @@ export class Input {
       strafe,
       sprint: k.has('ShiftLeft') || k.has('ShiftRight') || this.sprintTouch,
       jump: this.jumpQueued,
+      useItem: this.useQueued,
+      selectSlot: this.slotQueued,
+      cycleSlot: this.cycleQueued,
       turn: (k.has('KeyQ') ? 1 : 0) - (k.has('KeyE') ? 1 : 0),
       lookYaw: this.lookYaw,
       lookPitch: this.lookPitch,
     };
     this.lookYaw = this.lookPitch = 0;
     this.jumpQueued = false;
+    this.useQueued = false;
+    this.slotQueued = -1;
+    this.cycleQueued = 0;
     return input;
   }
 
@@ -127,6 +140,10 @@ export class Input {
       this.keys.add(e.code);
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
       if (e.code === 'Space' && !e.repeat && this.active) this.jumpQueued = true;
+      if (e.code === 'KeyF' && !e.repeat && this.active) this.useQueued = true;
+      // Digit1 selects slot 0, Digit2 slot 1, and so on; the sim ignores slots that do not exist.
+      const digit = /^Digit([1-9])$/.exec(e.code);
+      if (digit && this.active) this.slotQueued = Number(digit[1]) - 1;
       if (e.code === 'KeyM') this.handlers.onMute();
       if ((e.code === 'Escape' || e.code === 'KeyP') && this.active && !this.hasLock) this.handlers.onPause();
       if (e.code === 'Enter') this.handlers.onEnter();
@@ -147,13 +164,25 @@ export class Input {
         this.addLook(e.movementX * sens, e.movementY * sens);
       }
     });
-    this.view.addEventListener('mousedown', () => {
+    this.view.addEventListener('mousedown', (e) => {
       if (!this.active || this.touch) return;
       if (!this.hasLock) {
+        // The first click only grabs the pointer; it never fires an item.
         this.requestLock();
         this.dragging = true;
+      } else if (e.button === 0) {
+        this.useQueued = true;
       }
     });
+    this.view.addEventListener(
+      'wheel',
+      (e) => {
+        if (!this.active || e.deltaY === 0) return;
+        e.preventDefault();
+        this.cycleQueued += Math.sign(e.deltaY);
+      },
+      { passive: false },
+    );
     window.addEventListener('mouseup', () => {
       this.dragging = false;
     });

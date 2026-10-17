@@ -73,6 +73,73 @@ export class Audio8 {
     this.later(180, () => this.tone(110, 0.5, 0.09, 'sawtooth', 40));
   }
 
+  /** A faint chime: an item fell somewhere in the arena. */
+  itemSpawned(): void {
+    this.tone(880, 0.06, 0.025, 'triangle');
+    this.later(80, () => this.tone(1320, 0.08, 0.02, 'triangle'));
+  }
+
+  itemPickedUp(): void {
+    this.tone(523, 0.06, 0.06);
+    this.later(60, () => this.tone(784, 0.06, 0.06));
+    this.later(120, () => this.tone(1047, 0.09, 0.05));
+  }
+
+  /** Machete: a wet chop on a cut, a ringing clank when it bounces off, a whoosh on a miss. */
+  macheteSwing(result: 'cut' | 'bounce' | 'miss'): void {
+    this.tone(700, 0.1, 0.025, 'triangle', 220);
+    if (result === 'cut') {
+      this.later(40, () => this.tone(120, 0.16, 0.12, 'sawtooth', 55));
+      this.later(70, () => this.tone(80, 0.22, 0.06, 'triangle', 50));
+    } else if (result === 'bounce') {
+      this.later(40, () => this.tone(1650, 0.18, 0.05, 'triangle', 1500));
+      this.later(45, () => this.tone(2470, 0.12, 0.03, 'triangle', 2300));
+    }
+  }
+
+  /** Stone breaking: the snake smashed a crumbling wall. Louder when it is close. */
+  wallSmashed(distance: number): void {
+    const near = Math.max(0, 1 - distance / 30);
+    if (near <= 0) return;
+    this.tone(70, 0.35, 0.05 + near * 0.09, 'sawtooth', 35);
+    this.later(50, () => this.tone(140, 0.2, 0.04 * near, 'square', 60));
+  }
+
+  /** A bright chime for a relic, and a fanfare when the gate opens. */
+  relicFound(): void {
+    this.tone(784, 0.08, 0.06, 'triangle');
+    this.later(90, () => this.tone(1175, 0.14, 0.06, 'triangle'));
+  }
+
+  gateOpened(): void {
+    [523, 659, 784, 1047].forEach((f, i) => this.later(i * 110, () => this.tone(f, 0.18, 0.06, 'triangle')));
+  }
+
+  /** A low rising groan: the snake is about to split by itself. */
+  splitWarning(): void {
+    this.tone(90, 0.9, 0.07, 'sawtooth', 160);
+  }
+
+  /** The slingshot's twang. */
+  shotFired(): void {
+    this.tone(260, 0.16, 0.08, 'sawtooth', 140);
+  }
+
+  /** A heavy thunk on the snake's head, a light tick on anything else. */
+  shotHit(head: boolean): void {
+    if (head) {
+      this.tone(150, 0.18, 0.12, 'square', 70);
+      this.later(60, () => this.tone(95, 0.25, 0.08, 'triangle', 60));
+    } else {
+      this.tone(900, 0.04, 0.025, 'triangle', 600);
+    }
+  }
+
+  /** A soft falling blip: an item rotted away. */
+  itemSpoiled(): void {
+    this.tone(330, 0.25, 0.05, 'triangle', 160);
+  }
+
   jump(): void {
     this.tone(330, 0.09, 0.04, 'square', 520);
   }

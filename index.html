@@ -23,16 +23,26 @@
     <div class="hud-right">
       <canvas id="map" width="144" height="144" aria-label="Top-down map"></canvas>
       <div class="guide" id="guide" aria-live="off">
-        <span class="lbl">Goal</span>
+        <span class="lbl" id="gLevel">Goal</span>
         <span class="g-goal" id="gGoal"></span>
         <span class="g-progress" id="gProgress"></span>
         <span class="g-rule" id="gRule"></span>
       </div>
     </div>
   </div>
-  <div class="hud-bottom"><span class="lbl">Stamina</span><div class="bar" id="stamBar"><i id="stam"></i></div></div>
+  <div class="hud-bottom-row">
+    <div class="hud-bottom">
+      <div class="meter"><span class="lbl">Stamina</span><div class="bar" id="stamBar"><i id="stam"></i></div></div>
+      <div class="meter"><span class="lbl" id="xpLabel">XP</span><div class="bar xp"><i id="xpFill"></i></div></div>
+    </div>
+    <div class="slots" aria-label="Inventory">
+    <div class="slot empty" id="slot0"><i class="ring"></i><span class="icon" id="slotIcon0"></span><span class="uses" id="slotUses0"></span><span class="key">1</span></div>
+    <div class="slot empty" id="slot1"><i class="ring"></i><span class="icon" id="slotIcon1"></span><span class="uses" id="slotUses1"></span><span class="key">2</span></div>
+    </div>
+  </div>
 </div>
 <div id="cross" hidden></div>
+<div id="keenArrow" hidden aria-hidden="true"></div>
 <div id="stick" hidden><i id="knob"></i></div>
 <button id="sprintBtn" hidden>RUN</button>
 
@@ -45,6 +55,8 @@
       <div><dt>Mouse</dt><dd>Look</dd></div>
       <div><dt>Shift</dt><dd>Sprint</dd></div>
       <div><dt>Space</dt><dd>Jump</dd></div>
+      <div><dt>Click / F</dt><dd>Use item</dd></div>
+      <div><dt>1 / 2</dt><dd>Pick item</dd></div>
       <div><dt>Esc</dt><dd>Pause</dd></div>
       <div><dt>M</dt><dd>Sound on/off</dd></div>
       <div><dt>Q / E</dt><dd>Turn</dd></div>
@@ -89,9 +101,10 @@
   <section class="card" id="panelDead" hidden>
     <p class="eyebrow" id="deadCause">Run over</p>
     <h2 id="deadTitle">Eaten</h2>
+    <p class="lede" id="deadReached"></p>
     <dl class="stats">
       <div><dt>Survived</dt><dd id="dTime">0</dd></div>
-      <div><dt>Score</dt><dd id="dScore">0</dd></div>
+      <div><dt>Run score</dt><dd id="dScore">0</dd></div>
       <div><dt>Snake length</dt><dd id="dLen">0</dd></div>
       <div><dt>Pellets</dt><dd id="dPel">0</dd></div>
     </dl>
@@ -103,18 +116,26 @@
     <p class="best">Best score <span id="bestDead">0</span></p>
   </section>
 
+  <section class="card" id="panelPerk" hidden>
+    <p class="eyebrow" id="perkEyebrow">Level up</p>
+    <h2>Pick a perk</h2>
+    <div class="perks" id="perkChoices"></div>
+    <p class="best" id="perkOwned"></p>
+  </section>
+
   <section class="card" id="panelComplete" hidden>
-    <p class="eyebrow">Goal reached</p>
-    <h2>Level<br>complete</h2>
+    <p class="eyebrow" id="cEyebrow">Goal reached</p>
+    <h2 id="cTitle">Level<br>complete</h2>
     <dl class="stats">
       <div><dt>Time</dt><dd id="cTime">0</dd></div>
-      <div><dt>Score</dt><dd id="cScore">0</dd></div>
+      <div><dt>Level score</dt><dd id="cScore">0</dd></div>
       <div><dt>Pellets</dt><dd id="cPel">0</dd></div>
       <div><dt>Lives left</dt><dd id="cLives">0</dd></div>
     </dl>
+    <p class="lede" id="cRun"></p>
     <p class="flag" id="completeBest" hidden>New best score</p>
     <div class="row">
-      <button class="btn" id="completeAgainBtn">Run again</button>
+      <button class="btn" id="completeNextBtn">Continue</button>
       <button class="btn ghost" id="completeMenuBtn">Menu</button>
     </div>
     <p class="best">Best score <span id="bestComplete">0</span></p>

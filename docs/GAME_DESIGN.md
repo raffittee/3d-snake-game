@@ -24,6 +24,13 @@ Snake Hunt is a first-person 3D reversal of Snake: you are the food, and a growi
 | Dropped ideas | Rice terraces terrain, thorn trap item |
 | Lives | 3 lives per level, refilled between levels. A death respawns you at the level's start point and the snake stays as it was |
 | Items between levels | Clear at the end of each level |
+| Item tiers | Rarer tiers carry more of the same: white 1x, blue 1.5x, gold 2x the uses and spoil time |
+| Items on a lost life | You keep them; they keep spoiling |
+| Item controls | Click or F uses the selected item; 1 / 2 or the mouse wheel picks the slot |
+| First-person hands | Gloved hands hold the selected item and play its use motion; every item gets one |
+| Perk picks | Level-ups earned in a level are spent between levels (3 offered, pick 1 each); no mid-chase pause |
+| Machete aim | It cuts the segment under the crosshair within reach; a swing at nothing still costs a cut |
+| Snake floor (Levels 1 to 3) | 5 segments: a cut that would go under it bounces off |
 | Snake and water | The snake swims too, slower than it moves on land |
 | Host leaves a room | The match ends for everyone |
 | Snake player's view | Third person, just above the head |
