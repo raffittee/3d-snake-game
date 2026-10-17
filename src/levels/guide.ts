@@ -27,7 +27,21 @@ function progressLines(goal: Goal, world: World): string[] {
     case 'reachExit':
       return [world.player.swimming ? 'Swimming' : 'Reach the dock'];
     case 'relicsThenGate':
+      if (goal.relic === 'lantern') return world.relicsFound < goal.relics ? [`Lanterns ${world.relicsFound}/${goal.relics}`] : ['The boat is ready: board it'];
+      if (goal.relic === 'flask') return world.relicsFound < goal.relics ? [`Flasks ${world.relicsFound}/${goal.relics}`] : ['Reach the oasis'];
+      if (goal.relic === 'key') return world.relicsFound < goal.relics ? ['Key not found'] : ['Key found: the front door'];
       return world.relicsFound < goal.relics ? [`Relics ${world.relicsFound}/${goal.relics}`] : ['Gate open: reach it'];
+    case 'defeatAll': {
+      const n = world.snakes.length;
+      const longest = world.snakes.reduce((m, s) => Math.max(m, s.cells.length), 0);
+      // The Mother Snake: say which part of the fight this is.
+      if (world.bossPhase === 1) return [`The Mother: length ${longest}`];
+      if (world.bossPhase === 2) return [`Split in two: ${world.snakes.map((s) => s.cells.length).join(' and ')}`];
+      if (world.bossPhase === 3 && n > 0) return [`It coils: cut your way out (${longest})`];
+      return [n === 0 ? 'Beaten' : n === 1 ? `Length ${longest}` : `${n} snakes, longest ${longest}`];
+    }
+    case 'mapThenExit':
+      return world.relicsFound < 1 ? ['Map not found'] : ['Map found: reach the exit'];
   }
 }
 
