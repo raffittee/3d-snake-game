@@ -291,6 +291,7 @@ export class Game {
       else if (e.type === 'jumped') this.audio.jump();
       else if (e.type === 'itemSpawned') this.audio.itemSpawned();
       else if (e.type === 'itemPickedUp') this.audio.itemPickedUp();
+      else if (e.type === 'itemUsed') this.renderer.playUse();
       else if (e.type === 'shotFired') this.audio.shotFired();
       else if (e.type === 'shotHit') this.audio.shotHit(e.target === 'head');
       else if (e.type === 'snakeStunned') this.hud.flashHit();

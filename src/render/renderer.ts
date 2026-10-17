@@ -12,6 +12,7 @@ import { PelletViews } from './pellets';
 import { SnakeBody } from './snakeBody';
 import { SnakeHead } from './snakeHead';
 import { terrainLook } from './terrains';
+import { Viewmodel } from './viewmodel';
 import type { TerrainLook } from './terrains';
 
 /** What the camera needs besides the world. Owned by the game layer. */
@@ -56,6 +57,7 @@ export class GameRenderer {
   private readonly pellets: PelletViews;
   private readonly drops: DropViews;
   private readonly stones: StoneViews;
+  private readonly viewmodel = new Viewmodel();
   private look: TerrainLook = terrainLook('plains');
   private world: World | null = null;
   private quality: Quality = DEFAULT_SETTINGS.quality;
@@ -70,6 +72,7 @@ export class GameRenderer {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    this.renderer.autoClear = false;
     this.pmrem = new THREE.PMREMGenerator(this.renderer);
     this.scene.add(this.sun, this.sun.target, this.hemi);
     this.sun.shadow.mapSize.set(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
@@ -106,6 +109,7 @@ export class GameRenderer {
     this.renderer.shadowMap.enabled = high;
     this.sun.castShadow = high;
     this.scene.environment = high ? this.envMap : null;
+    this.viewmodel.scene.environment = this.scene.environment;
     this.hemi.intensity = high ? this.look.hemi.intensity * 0.25 : this.look.hemi.intensity;
     if (changed) {
       this.scene.remove(this.body.mesh);
@@ -126,6 +130,7 @@ export class GameRenderer {
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    this.viewmodel.setAspect(w / h);
   }
 
   render(world: World, view: CameraView, dt: number, now: number): void {
@@ -134,8 +139,20 @@ export class GameRenderer {
     this.drops.sync(world, dt);
     this.stones.sync(world);
     this.placeSnake(world, view, dt, now);
-    this.updateCamera(world, view, dt);
+    this.updateCamera(world, view, dt, now);
+    // Two passes: the world, then the first-person hands on top with a fresh depth buffer,
+    // so they never clip into rocks or the snake.
+    this.renderer.clear();
     this.renderer.render(this.scene, this.camera);
+    const p = world.player;
+    this.viewmodel.update(world.inventory[world.selectedSlot] ?? null, view.mode === 'play', dt, view.bob, p.moving && p.y === 0 && !p.swimming, view.yaw, view.pitch, view.reducedMotion, p.swimming);
+    this.renderer.clearDepth();
+    this.renderer.render(this.viewmodel.scene, this.viewmodel.camera);
+  }
+
+  /** The hands play the selected item's use motion. */
+  playUse(): void {
+    this.viewmodel.playUse();
   }
 
   // --- building ---
@@ -158,7 +175,7 @@ export class GameRenderer {
         this.scene.background = hdr;
         this.scene.backgroundIntensity = look.backgroundIntensity;
         this.scene.environmentIntensity = look.envIntensity;
-        if (this.quality === 'high') this.scene.environment = this.envMap;
+        if (this.quality === 'high') this.scene.environment = this.viewmodel.scene.environment = this.envMap;
       })
       .catch((err: unknown) => console.warn('Sky failed to load', err));
   }
