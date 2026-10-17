@@ -165,8 +165,12 @@ export class SnakeHead {
     for (const f of this.fangs) f.visible = k > 0.25;
   }
 
-  /** Flick the tongue in and out; `now` in milliseconds. */
-  flick(now: number): void {
+  /** Flick the tongue in and out; `now` in milliseconds, or null to keep it in. */
+  flick(now: number | null): void {
+    if (now === null) {
+      this.tongue.visible = false;
+      return;
+    }
     const out = Math.max(0, Math.sin(now * 0.012));
     this.tongue.scale.set(1, 1, 0.05 + out);
     this.tongue.visible = out > 0.02;

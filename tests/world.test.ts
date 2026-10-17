@@ -44,7 +44,7 @@ describe('createWorld', () => {
 
   it('faces the player toward the snake', () => {
     const w = createWorld(level01, 3);
-    const head = w.snake.pos[0];
+    const head = w.snakes[0].pos[0];
     const fx = -Math.sin(w.player.yaw);
     const fz = -Math.cos(w.player.yaw);
     const dx = head.x - w.player.x;
@@ -58,7 +58,7 @@ describe('updateWorld', () => {
   it('kills the player on their last life when the snake head reaches them', () => {
     const w = createWorld(level01, 4);
     w.lives = 1;
-    const head = w.snake.pos[0];
+    const head = w.snakes[0].pos[0];
     w.player.x = head.x;
     w.player.z = head.z;
     updateWorld(w, NO_INPUT, 0.016);
@@ -70,7 +70,7 @@ describe('updateWorld', () => {
   it('does not kill an invulnerable player', () => {
     const w = createWorld(level01, 4);
     w.invulnerable = true;
-    const head = w.snake.pos[0];
+    const head = w.snakes[0].pos[0];
     w.player.x = head.x;
     w.player.z = head.z;
     updateWorld(w, NO_INPUT, 0.016);
@@ -93,11 +93,11 @@ describe('updateWorld', () => {
     const w = createWorld(level01, 8);
     w.invulnerable = true;
     updateWorld(w, NO_INPUT, 0.016);
-    const early = w.snake.interval;
+    const early = w.snakes[0].interval;
     w.elapsed = 1000;
     updateWorld(w, NO_INPUT, 0.016);
-    expect(w.snake.interval).toBeLessThan(early);
-    expect(w.snake.interval).toBe(level01.snake.minInterval);
+    expect(w.snakes[0].interval).toBeLessThan(early);
+    expect(w.snakes[0].interval).toBe(level01.snake.minInterval);
   });
 
   it('adds a segment every growEverySeconds', () => {
@@ -105,7 +105,7 @@ describe('updateWorld', () => {
     w.invulnerable = true;
     // Park the player far away so nothing else interferes, then run 8 seconds.
     for (let t = 0; t < 8; t += 0.05) updateWorld(w, NO_INPUT, 0.05);
-    expect(w.snake.cells.length + w.snake.pendingGrow).toBeGreaterThanOrEqual(level01.snake.startLength + 1);
+    expect(w.snakes[0].cells.length + w.snakes[0].pendingGrow).toBeGreaterThanOrEqual(level01.snake.startLength + 1);
   });
 });
 

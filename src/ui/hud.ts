@@ -72,7 +72,9 @@ export class Hud {
   update(world: World, danger: number, dead: boolean, finalScore: number, run: HudRun): void {
     this.time.textContent = formatTime(world.elapsed);
     this.score.textContent = String(dead ? finalScore : scoreOf(world));
-    this.len.textContent = String(world.snake.cells.length);
+    // The longest snake, and how many there are once a cut has split it.
+    const longest = world.snakes.reduce((m, s) => Math.max(m, s.cells.length), 0);
+    this.len.textContent = world.snakes.length > 1 ? `${longest} \u00d7${world.snakes.length}` : String(longest);
     const gap = gapToSnake(world);
     this.gap.textContent = `${Math.round(gap)}m`;
     this.gap.classList.toggle('hot', gap < 6);
@@ -111,7 +113,7 @@ export class Hud {
   drawMap(world: World): void {
     const g = this.mapCtx;
     const p = this.palette;
-    const { grid, player, snake } = world;
+    const { grid, player } = world;
     const n = grid.size;
     const cs = Math.max(3, Math.floor(MAP_PX / n));
     const canvas = g.canvas;
@@ -168,19 +170,21 @@ export class Hud {
       g.arc(at(pe.x), at(pe.z), cs * 0.38, 0, Math.PI * 2);
       g.fill();
     }
-    // Snake: one thick line through its segments, the head as a red dot.
+    // Snakes: one thick line through each one's segments, the head as a red dot.
     const toMap = (v: number): number => ((v + grid.half) / grid.cell) * cs;
-    g.strokeStyle = p.snake;
-    g.lineWidth = cs * 0.75;
-    g.lineCap = 'round';
-    g.lineJoin = 'round';
-    g.beginPath();
-    snake.pos.forEach((q, i) => (i ? g.lineTo(toMap(q.x), toMap(q.z)) : g.moveTo(toMap(q.x), toMap(q.z))));
-    g.stroke();
-    g.fillStyle = p.alert;
-    g.beginPath();
-    g.arc(toMap(snake.pos[0].x), toMap(snake.pos[0].z), cs * 0.62, 0, Math.PI * 2);
-    g.fill();
+    for (const snake of world.snakes) {
+      g.strokeStyle = p.snake;
+      g.lineWidth = cs * 0.75;
+      g.lineCap = 'round';
+      g.lineJoin = 'round';
+      g.beginPath();
+      snake.pos.forEach((q, i) => (i ? g.lineTo(toMap(q.x), toMap(q.z)) : g.moveTo(toMap(q.x), toMap(q.z))));
+      g.stroke();
+      g.fillStyle = p.alert;
+      g.beginPath();
+      g.arc(toMap(snake.pos[0].x), toMap(snake.pos[0].z), cs * 0.62, 0, Math.PI * 2);
+      g.fill();
+    }
     // Player arrow.
     const px = toMap(player.x);
     const pz = toMap(player.z);

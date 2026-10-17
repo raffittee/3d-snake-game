@@ -92,10 +92,10 @@ describe('level completion in updateWorld', () => {
     expect(w.status).toBe('complete');
     drainEvents(w);
     const elapsed = w.elapsed;
-    const steps = w.snake.steps;
+    const steps = w.snakes[0].steps;
     for (let i = 0; i < 20; i++) updateWorld(w, NO_INPUT, 0.5);
     expect(w.elapsed).toBe(elapsed);
-    expect(w.snake.steps).toBe(steps);
+    expect(w.snakes[0].steps).toBe(steps);
     expect(completions(w)).toBe(0);
   });
 
@@ -103,7 +103,7 @@ describe('level completion in updateWorld', () => {
     const w = worldWith(COLLECT, false);
     w.lives = 1;
     w.pelletsCollected = 10;
-    const head = w.snake.pos[0];
+    const head = w.snakes[0].pos[0];
     w.player.x = cellToWorld(w.grid, worldToCell(w.grid, head.x));
     w.player.z = cellToWorld(w.grid, worldToCell(w.grid, head.z));
     updateWorld(w, NO_INPUT, 0.01);

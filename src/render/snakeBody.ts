@@ -255,6 +255,12 @@ export class SnakeBody {
     cap.scale.set(hw, hh * (1 + BELLY_FLAT) * 0.5, 1);
   }
 
+  /** 0..1: a warm glow over the skin (the warning before a growth split). */
+  setFlash(k: number): void {
+    const m = this.mesh.material as THREE.MeshStandardMaterial;
+    m.emissive.setRGB(0.55 * k, 0.45 * k, 0.12 * k);
+  }
+
   setShadows(on: boolean): void {
     this.mesh.castShadow = on;
   }

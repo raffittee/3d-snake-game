@@ -46,6 +46,11 @@ export interface LevelConfig {
     rampPerSecond: number;
     growEverySeconds: number;
     maxLength: number;
+    /** Can it be beaten here (shrunk under 3 segments)? If not, cuts bounce off at `floor` length. */
+    defeatable: boolean;
+    floor: number;
+    /** Growth split: past this length the snake splits by itself. Omit for none. */
+    splitAt?: number;
   };
   pelletCount: number;
   items: LevelItems;

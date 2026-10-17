@@ -2,8 +2,8 @@ import type { BehaviorId } from '../levels/types';
 import type { Cell, World } from '../sim/types';
 import { worldToCell } from '../sim/grid';
 
-/** A behavior decides which grid cell the snake is heading for. Pathfinding does the rest. */
-export type Behavior = (world: World) => Cell;
+/** A behavior decides which grid cell a snake is heading for. Pathfinding does the rest. */
+export type Behavior = (world: World, snake: SnakeState) => Cell;
 
 /** Shortest path to wherever the player is standing right now. */
 const chase: Behavior = (world) => ({

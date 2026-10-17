@@ -56,6 +56,8 @@ export interface PlayerInput {
 }
 
 export interface SnakeState {
+  /** Stable id: a snake split off by a cut gets a new one. */
+  id: number;
   /** Head first, in grid cells. */
   cells: Cell[];
   /** Cells at the previous step, same order, for smooth drawing between steps. */
@@ -72,6 +74,26 @@ export interface SnakeState {
   steps: number;
   /** Seconds of stun left (slingshot, or dazed after splitting off). No steps and no growth meanwhile. */
   stunTimer: number;
+  /**
+   * 0 = it has its tapered, jumpable tail. After a cut it ends in a stump instead (nothing low to
+   * jump); each growth step regrows a little and at 0 the tail is back.
+   */
+  stump: number;
+  /** Seconds left of the warning flash before a growth split (Level 3). 0 = none pending. */
+  splitWarn: number;
+  /** World time it appeared (a split-off snake grows its head; the renderer animates that). */
+  bornAt: number;
+}
+
+/** A piece cut off a snake: it twitches and withers away. No collision. World units. */
+export interface Severed {
+  id: number;
+  pos: Vec2[];
+  /** Seconds left before it is gone, and its full life. */
+  life: number;
+  total: number;
+  /** Whether the piece still ends in the snake's real tail (else both ends are cuts). */
+  hasTail: boolean;
 }
 
 /** Items, one entry per kind. Extend as items are built; each needs an entry in src/items. */
@@ -112,6 +134,9 @@ export interface Projectile {
   life: number;
 }
 
+/** What a cut did: shrank the snake (a piece withered), split it in two, defeated it, or bounced off. */
+export type CutResult = 'shrunk' | 'split' | 'defeated' | 'bounce';
+
 /** What a projectile stopped against. */
 export type HitTarget = 'head' | 'body' | 'solid' | 'wall' | 'ground';
 
@@ -139,6 +164,10 @@ export type SimEvent =
   | { type: 'shotFired' }
   | { type: 'shotHit'; target: HitTarget }
   | { type: 'snakeStunned'; seconds: number }
+  | { type: 'snakeCut'; result: CutResult; x: number; z: number }
+  | { type: 'snakeSplitWarning'; snakeId: number }
+  | { type: 'snakeDefeated' }
+  | { type: 'macheteSwing'; result: 'cut' | 'bounce' | 'miss' };
 
 export interface World {
   level: LevelConfig;
@@ -148,7 +177,13 @@ export interface World {
   /** 1 where a pillar or landmark stands (anything solid), indexed z * size + x. */
   pillars: Uint8Array;
   player: PlayerState;
-  snake: SnakeState;
+  /** Every live snake. A mid-body cut or a growth split adds one. */
+  snakes: SnakeState[];
+  nextSnakeId: number;
+  /** Cut-off pieces withering away. */
+  severed: Severed[];
+  /** The snake that ended the run (for the death camera). */
+  killerId: number | null;
   pellets: Pellet[];
   nextPelletId: number;
   pelletRespawn: number;

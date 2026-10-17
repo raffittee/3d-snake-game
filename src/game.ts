@@ -209,7 +209,7 @@ export class Game {
       cause: this.world.deathCause ?? 'caught',
       elapsed: this.world.elapsed,
       score: this.finalScore,
-      length: this.world.snake.cells.length,
+      length: this.world.snakes.reduce((n, s) => n + s.cells.length, 0),
       pellets: this.world.pelletsCollected,
       isBest,
       best: this.best,
@@ -271,7 +271,7 @@ export class Game {
     } else if (this.state === 'menu') {
       this.cam.menuT += dt;
       this.wanderT -= dt;
-      const head = w.snake.cells[0];
+      const head = w.snakes[0]?.cells[0] ?? { x: -1, z: -1 };
       if (this.wanderT <= 0 || (head.x === this.wander.x && head.z === this.wander.z)) {
         const n = w.grid.size;
         this.wander = { x: 1 + w.rng.int(n - 2), z: 1 + w.rng.int(n - 2) };
@@ -295,6 +295,9 @@ export class Game {
       else if (e.type === 'shotFired') this.audio.shotFired();
       else if (e.type === 'shotHit') this.audio.shotHit(e.target === 'head');
       else if (e.type === 'snakeStunned') this.hud.flashHit();
+      else if (e.type === 'macheteSwing') this.audio.macheteSwing(e.result);
+      else if (e.type === 'snakeCut' && e.result !== 'bounce') this.renderer.spray(e.x, e.z);
+      else if (e.type === 'snakeSplitWarning') this.audio.splitWarning();
       else if (e.type === 'itemSpoiled') this.audio.itemSpoiled();
       else if (e.type === 'lifeLost') {
         this.audio.lifeLost();
@@ -306,11 +309,12 @@ export class Game {
   /** A text dump for the ?debug=1 panel. */
   debugText(): string {
     const w = this.world;
-    const s = w.snake;
+    const s = w.snakes[0];
     return [
       `state ${this.state}  seed ${this.seed}`,
       `t ${w.elapsed.toFixed(1)}s  score ${scoreOf(w)}`,
-      `snake len ${s.cells.length} (+${s.pendingGrow})  step ${s.interval.toFixed(3)}s  lives ${w.lives}`,
+      `snakes ${w.snakes.map((q) => `${q.cells.length}${q.stump > 0 ? 's' : ''}${q.stunTimer > 0 ? '*' : ''}`).join(' ')}  step ${s ? s.interval.toFixed(3) : '-'}s  lives ${w.lives}`,
+      `items ${w.inventory.map((h, i) => `${i === w.selectedSlot ? '>' : ''}${h ? `${h.item}/${h.tier} x${h.uses} ${h.spoilLeft.toFixed(0)}s` : '-'}`).join('  ')}  drops ${w.drops.length}`,
       `player ${w.player.x.toFixed(1)},${w.player.z.toFixed(1)}  stam ${clamp(w.player.stamina, 0, 1).toFixed(2)}`,
       `gap ${gapToSnake(w).toFixed(1)}  sprint ${BALANCE.player.sprintSpeed}`,
       `fps ${this.perf.fps.toFixed(0)}  worst frame ${this.perf.shownWorstMs.toFixed(0)}ms  mouse peak ${this.perf.shownPeakDelta.toFixed(0)}px`,

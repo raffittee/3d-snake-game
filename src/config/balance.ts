@@ -56,6 +56,14 @@ export const BALANCE = {
     /** The last N segments shrink toward the tail. */
     taperSegments: 5,
     taperMinScale: 0.6,
+    /** A piece cut off behind the cut needs this many segments to become a snake; shorter ones wither. */
+    minSplitLength: 4,
+    /** A split-off snake is dazed this long while it grows its head. */
+    splitDazeSeconds: 1,
+    /** Seconds a severed piece twitches and withers before it is gone. */
+    severedLife: 1.6,
+    /** Growth split: the body flashes this long before the snake splits by itself. */
+    splitWarnSeconds: 2,
     /** Being squeezed deeper than this into a body segment (after push-out) is a crush. */
     crushOverlap: 0.22,
   },
@@ -93,6 +101,12 @@ export const BALANCE = {
         stoneGravity: 6,
         stoneLife: 1.5,
         stoneRadius: 0.12,
+      },
+      machete: {
+        uses: 5,
+        spoilSeconds: 45,
+        /** A swing cuts the snake segment under the crosshair within this distance from your eye. */
+        reach: 2.6,
       },
     },
   },

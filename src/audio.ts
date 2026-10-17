@@ -85,6 +85,23 @@ export class Audio8 {
     this.later(120, () => this.tone(1047, 0.09, 0.05));
   }
 
+  /** Machete: a wet chop on a cut, a ringing clank when it bounces off, a whoosh on a miss. */
+  macheteSwing(result: 'cut' | 'bounce' | 'miss'): void {
+    this.tone(700, 0.1, 0.025, 'triangle', 220);
+    if (result === 'cut') {
+      this.later(40, () => this.tone(120, 0.16, 0.12, 'sawtooth', 55));
+      this.later(70, () => this.tone(80, 0.22, 0.06, 'triangle', 50));
+    } else if (result === 'bounce') {
+      this.later(40, () => this.tone(1650, 0.18, 0.05, 'triangle', 1500));
+      this.later(45, () => this.tone(2470, 0.12, 0.03, 'triangle', 2300));
+    }
+  }
+
+  /** A low rising groan: the snake is about to split by itself. */
+  splitWarning(): void {
+    this.tone(90, 0.9, 0.07, 'sawtooth', 160);
+  }
+
   /** The slingshot's twang. */
   shotFired(): void {
     this.tone(260, 0.16, 0.08, 'sawtooth', 140);
