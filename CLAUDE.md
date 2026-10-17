@@ -8,7 +8,7 @@ Owner: Rafi. The plan for where this is going is in `docs/GAME_DESIGN.md` (10-le
 
 - `npm install`, then `npm run dev` (Vite, http://localhost:5173).
 - `npm run check`: typecheck + lint + unit tests. Run it before saying a task is done. It must pass.
-- `npm run build`: typecheck + production build into `dist/` (deploys to any static host; `base` is `./`).
+- `npm run build`: typecheck + production build into `dist/` (deploys to any static host; `base` is `./`). `.github/workflows/deploy.yml` runs `check` + `build` and publishes `dist/` to GitHub Pages on every push to `main`; `ci.yml` runs the same checks on PRs and other branches. Neither runs the e2e test.
 - `npm run test:e2e`: Playwright smoke test against a production build (about 2 minutes: software WebGL draws the textured arena at a few fps). First time: `npx playwright install chromium`. Software WebGL flags are already set and the tests use `?quality=low`. Set `CHROMIUM_PATH` to use a specific browser binary.
 - Debug URL switches: `?debug=1` (debug panel, exposes `window.__snake`), `?seed=N` (same arena every run), `?god=1` (the snake cannot kill you), `?quality=low|high` (overrides the saved graphics quality), `?level=N` (runs start on level N).
 
