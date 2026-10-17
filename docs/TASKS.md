@@ -52,16 +52,23 @@ Gate: Level 1 plays end to end with its goal and corner guide.
 
 Gate: a run through Levels 1 to 3 feels fair in playtests.
 
-- [ ] Inventory (2 slots) with draining spoil rings; item tiers (white, blue, gold)
-- [ ] Items: slingshot, machete, swim ring
-- [ ] Snake as HP: `world.snake` becomes `world.snakes[]`; tail cut, mid-body split, growth split, floor length, defeat rule
-- [ ] Cut feel: flesh cross-section caps, short blood spray, severed piece twitches before it withers (uses the `cut` ends from item 7; a split-off half gets its own head view)
-- [ ] Pathfinder avoids other snakes' bodies
-- [ ] XP from pellets; perk pick on level-up (3 offered, pick 1); perks reset each run
-- [ ] Between-level perk pick screen; items clear at level end
-- [ ] Level 2 Ruins (jumpable and crumbling walls, find 5 relics, reach the gate)
-- [ ] Level 3 Riverside (water, bridges, snake swims slower, pellet speed boost, far dock)
-- [ ] AI: `predict` behavior
+- [x] Inventory (2 slots) with draining spoil rings; item tiers (white, blue, gold): drops fall on a per-level timer (`LevelConfig.items`), pick up by walking over, tiers scale uses and spoil time, kept on a lost life, Click/F use, 1/2/wheel select, `ITEMS` registry in `src/items`. Using the slingshot only spends a shot until its own item lands.
+- [x] First-person arms and hands (asked for mid-phase): gloved hands hold the selected item and play its use motion; every item has a rig (`render/viewmodel.ts`): slingshot draw and release, machete swing, swim ring held in both hands (lower in the water)
+- [x] Items: slingshot, machete, swim ring
+  - [x] Slingshot: a visible stone along the crosshair; head hit = 2 s stun (resets, never stacks); dazed head, hit marker, sounds
+  - [x] Machete (5 cuts): cuts the segment under the crosshair within 2.6 units; head and floor bounce it off; a swing at nothing still costs a cut; chop, clank and whoosh sounds
+  - [x] Swim ring (first drops Level 3): passive while carried; its 30 s (45 / 60 at higher tiers) drain only while you swim; run out in deep water and you drown (a life)
+- [x] Snake as HP: `world.snakes[]`; tail cut (piece under 4 withers), mid-body split (back half grows a head, dazed 1 s), growth split (`splitAt`, 2 s warning flash), floor 5 on Levels 1 to 3 (cuts bounce), defeat under 3 where `defeatable`; a cut leaves a stump (not jumpable) until 4 growth steps regrow the tail
+- [x] Cut feel: flesh cross-section caps, a burst of blood, the severed piece twitches and sinks as it withers; a split-off snake grows its head in
+- [x] Pathfinder avoids other snakes' bodies (and never steps into any blocked cell: this also fixed the old self-overlap bug)
+- [x] XP from pellets (level-ups at 3, 5, 7... XP); perks: Big lungs, Packrat, Preserver, Spring legs, Keen ears, Sharp edge, Second wind (Light feet waits for Phase 3's ambushing snake); perks reset each run
+- [x] Between-level perk pick screen (3 offered, pick 1 per level-up) and the campaign flow: Level 1 → 2 → 3 with lives refilled and items cleared; level and run scores; losing all lives ends the run; `?level=N` debug switch
+- [x] Level 2 Ruins (48x48): seeded rooms of low walls (jump them) and crumbling walls (the snake smashes them, with dust); 5 relics then the gate; Predict snake; machete drops; ruins look (sandstone, cobbles, old stone)
+- [x] Level 3 Riverside (64x64): a winding river with 3 plank bridges; deep water needs the swim ring; the snake swims 1.6x slower; pellets give a +15% speed boost that fades over 8 s and stacks; growth split at 22; reach the dock on the far bank; riverside look (grass, rocky banks, water, planks)
+- [x] AI: `predict` behavior (aims where you will be 1 s from now; falls back to your cell when that one is blocked)
+- [x] Docs for Phase 2: CLAUDE.md (layout, rules, controls), GAME_DESIGN.md decisions (tiers, items on a lost life, controls, hands, perk timing, machete aim, floor), CREDITS.md (new textures and skies)
+- [x] e2e: the campaign flow (win Level 1, pick a perk, Level 2 starts with it), a machete cut that splits the snake, Level 3 loading (7 e2e tests, all passing)
+- [ ] Playtest gate: a run through Levels 1 to 3 feels fair (needs you)
 
 ## Phase 3: Campaign
 
@@ -103,7 +110,7 @@ Gate: 4 friends finish a Classic match with no desync.
 ## Tech debt and open questions
 
 - [ ] `createWorld` uses an `as unknown as World` cast (clean up when the world becomes multi-snake)
-- [ ] BFS can target the snake's own body, so it can very rarely overlap itself (write a reproducing test first)
+- [x] BFS can target the snake's own body, so it can very rarely overlap itself: fixed with the multi-snake pathing (a snake never steps into a blocked cell); covered by the several-snakes test
 - [ ] Pillar generation does not check arena connectivity
 - [x] Collision is 2D only; jumping needs a height dimension (snake segments are height-aware now; pillars and walls are always full height)
 - [ ] three.js and the game are ~700 kB in one JS chunk (184 kB gzipped); consider splitting. Assets in `public/assets` add ~15 MB (loaded at start).

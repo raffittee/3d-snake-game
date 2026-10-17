@@ -18,6 +18,6 @@ All third-party assets below are **CC0** (public domain) from [Poly Haven](https
 | `hdri/kloofendal_43d_clear_puresky_1k.hdr` | Kloofendal 43d Clear (Pure Sky), Ruins sky | https://polyhaven.com/a/kloofendal_43d_clear_puresky |
 | `hdri/kloofendal_38d_partly_cloudy_puresky_1k.hdr` | Kloofendal 38d Partly Cloudy (Pure Sky), Riverside sky | https://polyhaven.com/a/kloofendal_38d_partly_cloudy_puresky |
 
-Made in code (no files): the snake's skin and scales, the snake head, the pellet gem, and the stone watchtower (built from the castle wall texture).
+Made in code (no files): the snake's skin and scales, the snake head, the pellet gem, the stone watchtower (built from the castle wall texture), the slingshot, machete and swim ring, the first-person gloved hands, relics, the gate, the water surface, bridges and the dock.
 
 ARM = ambient occlusion (red), roughness (green), metalness (blue).
