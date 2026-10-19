@@ -115,9 +115,9 @@ describe('burrow', () => {
     w.invulnerable = false;
     w.player.x = h.x;
     w.player.z = h.z;
-    const lives = w.lives;
+    const lives = w.player.lives;
     updateWorld(w, NO_INPUT, DT);
-    expect(w.lives).toBe(lives);
+    expect(w.player.lives).toBe(lives);
   });
 
   it('comes up close to you after the sand heaves for a second, and is solid again', () => {
@@ -160,8 +160,8 @@ describe('mongoose', () => {
     const w = field(line({ x: 30, z: 30 }));
     putPlayer(w, { x: 40, z: 30 });
     w.player.yaw = Math.PI / 2;
-    w.inventory[0] = makeHeld('mongoose', 'white');
-    w.selectedSlot = 0;
+    w.player.inventory[0] = makeHeld('mongoose', 'white');
+    w.player.selectedSlot = 0;
     updateWorld(w, { ...NO_INPUT, useItem: true }, DT);
     expect(drainEvents(w).some((e) => e.type === 'mongooseReleased')).toBe(true);
     expect(w.mongooses).toHaveLength(1);
@@ -190,8 +190,8 @@ describe('mongoose', () => {
     s.burrow = { mode: 'down', t: 0 };
     s.stunTimer = 1e9;
     putPlayer(w, { x: 10, z: 10 });
-    w.inventory[0] = makeHeld('mongoose', 'white');
-    w.selectedSlot = 0;
+    w.player.inventory[0] = makeHeld('mongoose', 'white');
+    w.player.selectedSlot = 0;
     updateWorld(w, { ...NO_INPUT, useItem: true }, DT);
     run(w, 2);
     const m = w.mongooses[0];

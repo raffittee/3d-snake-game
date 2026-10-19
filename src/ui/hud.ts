@@ -1,5 +1,6 @@
 import { BALANCE } from '../config/balance';
 import { guideLines } from '../levels/guide';
+import { TERRAIN_NAMES } from '../levels/modes';
 import type { Palette } from '../render/palette';
 import { gapToSnake, scoreOf } from '../sim/world';
 import type { World } from '../sim/types';
@@ -78,10 +79,10 @@ export class Hud {
 
   /** Inventory slots: icon, uses, tier ring. The DOM changes only when a slot changes; the ring every frame. */
   private updateSlots(world: World): void {
-    world.inventory.forEach((held, i) => {
+    world.player.inventory.forEach((held, i) => {
       const view = this.slots[i];
       if (!view) return;
-      const selected = i === world.selectedSlot;
+      const selected = i === world.player.selectedSlot;
       // Uses are whole numbers, except the swim ring's seconds in the water: show those rounded up.
       const uses = held ? Math.ceil(held.uses - 1e-6) : 0;
       const key = held ? `${held.item}|${held.tier}|${uses}|${selected}` : `empty|${selected}`;
@@ -99,7 +100,17 @@ export class Hud {
   }
 
   update(world: World, danger: number, dead: boolean, finalScore: number, run: HudRun): void {
-    this.levelLabel.textContent = `Level ${run.levelNumber} \u00b7 ${run.levelName}`;
+    this.levelLabel.textContent = world.match ? `Round ${world.match.round} \u00b7 ${TERRAIN_NAMES[world.level.terrain]}` : `Level ${run.levelNumber} \u00b7 ${run.levelName}`;
+    // Multiplayer: the round clock replaces time and score; lives only count in Snake and Players;
+    // steering a snake, you have no stamina, items or gap to watch.
+    const mp = world.match;
+    const piloting = world.player.snakeId !== null;
+    this.setHidden(this.time, !!mp);
+    this.setHidden(this.score, !!mp);
+    this.setHidden(this.livesBox, (!!mp && mp.mode !== 'snakeAndPlayers') || piloting, true);
+    this.setHidden(this.gap, piloting || world.player.out);
+    this.setHidden(this.bar.closest('.hud-bottom'), piloting || world.player.out, true);
+    this.setHidden(document.querySelector('.slots'), piloting || world.player.out, true);
     this.xpLabel.textContent = `XP \u00b7 ${run.xpLevel}`;
     this.xpFill.style.width = `${(Math.min(1, run.xpFraction) * 100).toFixed(1)}%`;
     this.keenArrow.hidden = !run.keenEars || dead;
@@ -109,7 +120,7 @@ export class Hud {
     // The longest snake, and how many there are once a cut has split it.
     const longest = world.snakes.reduce((m, s) => Math.max(m, s.cells.length), 0);
     this.len.textContent = world.snakes.length > 1 ? `${longest} \u00d7${world.snakes.length}` : String(longest);
-    const gap = gapToSnake(world);
+    const gap = gapToSnake(world, world.player);
     this.gap.textContent = `${Math.round(gap)}m`;
     this.gap.classList.toggle('hot', gap < 6);
     const guide = guideLines(world);
@@ -117,14 +128,14 @@ export class Hud {
     this.guideProgress.textContent = guide.progress;
     this.guideRule.textContent = guide.rule;
     this.updateSlots(world);
-    this.lives.textContent = String(world.lives);
-    this.livesBox.classList.toggle('grace', world.graceTimer > 0);
+    this.lives.textContent = String(world.player.lives);
+    this.livesBox.classList.toggle('grace', world.player.graceTimer > 0);
     this.stam.style.width = `${(world.player.stamina * 100).toFixed(1)}%`;
     this.bar.classList.toggle('tired', world.player.tired);
     // Energy drink: the bar glows while sprinting is free.
     this.bar.classList.toggle('energized', world.player.energy > 0);
     // Broken house: what R does at the door in front of you, and how far your noise carries.
-    const door = dead ? null : doorInReach(world);
+    const door = dead ? null : doorInReach(world, world.player);
     const promptText = !door || door.state === DoorState.Broken ? '' : door.state === DoorState.Shut ? 'Open door' : 'Shut door';
     if (promptText !== this.promptShown) {
       this.promptShown = promptText;
@@ -135,12 +146,12 @@ export class Hud {
     const lit = !!world.level.flashlight;
     this.lightMeter.hidden = !lit;
     if (lit) {
-      this.lightFill.style.width = `${Math.min(100, (world.battery / BALANCE.cave.batteryStart) * 100).toFixed(0)}%`;
-      this.lightBar.classList.toggle('low', world.battery < BALANCE.cave.batteryLow);
+      this.lightFill.style.width = `${Math.min(100, (world.player.battery / BALANCE.cave.batteryStart) * 100).toFixed(0)}%`;
+      this.lightBar.classList.toggle('low', world.player.battery < BALANCE.cave.batteryLow);
     }
     const ambush = world.level.snake.behavior === 'ambush';
     this.noiseMeter.hidden = !ambush;
-    if (ambush) this.noiseFill.style.width = `${Math.min(100, (world.noise / BALANCE.noise.slam) * 100).toFixed(0)}%`;
+    if (ambush) this.noiseFill.style.width = `${Math.min(100, (world.player.noise / BALANCE.noise.slam) * 100).toFixed(0)}%`;
     // Effects still running, with whole seconds left (the DOM only changes when the text does).
     const buffs = [
       world.player.energy > 0 ? `Energy ${Math.ceil(world.player.energy)}s` : '',
@@ -161,6 +172,12 @@ export class Hud {
     }
     const flash = Math.max(0, (this.flashUntil - performance.now()) / FLASH_MS) * 0.9;
     this.dangerEl.style.opacity = dead ? '0.9' : Math.max(danger * 0.75, flash).toFixed(3);
+  }
+
+  /** Hide a readout (its box: the value's parent, or `el` itself when `self`). Only touches the DOM on a change. */
+  private setHidden(el: Element | null, hidden: boolean, self = false): void {
+    const box = self ? el : el?.parentElement;
+    if (box instanceof HTMLElement && box.hidden !== hidden) box.hidden = hidden;
   }
 
   /** The crosshair flashes when a stone stuns the snake, so you know the shot landed. */
@@ -336,6 +353,31 @@ export class Hud {
       g.beginPath();
       g.arc(toMap(head.x), toMap(head.z), cs * 0.62, 0, Math.PI * 2);
       g.fill();
+    }
+    // Multiplayer: the nest, and everyone else as a dot in their color (a ring when downed).
+    const nest = world.match?.nest;
+    if (nest) {
+      g.strokeStyle = p.pellet;
+      g.lineWidth = Math.max(1, cs * 0.4);
+      g.beginPath();
+      g.arc(at(nest.x), at(nest.z), cs * 1.4, 0, Math.PI * 2);
+      g.stroke();
+    }
+    for (const other of world.players) {
+      if (other === player || other.out || other.snakeId !== null) continue;
+      g.fillStyle = p.players[other.id % p.players.length];
+      g.strokeStyle = g.fillStyle;
+      g.lineWidth = Math.max(1, cs * 0.3);
+      g.beginPath();
+      g.arc(toMap(other.x), toMap(other.z), cs * 0.7, 0, Math.PI * 2);
+      if (other.down > 0) g.stroke();
+      else g.fill();
+      if (other.egg) {
+        g.strokeStyle = p.landmark;
+        g.beginPath();
+        g.arc(toMap(other.x), toMap(other.z), cs * 1.2, 0, Math.PI * 2);
+        g.stroke();
+      }
     }
     // Player arrow.
     const px = toMap(player.x);

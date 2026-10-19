@@ -145,8 +145,8 @@ describe('firecracker', () => {
     putPlayer(w, { x: 20, z: 14 });
     w.player.yaw = -Math.PI / 2;
     w.player.pitch = 0;
-    w.inventory[0] = makeHeld('firecracker', 'white');
-    w.selectedSlot = 0;
+    w.player.inventory[0] = makeHeld('firecracker', 'white');
+    w.player.selectedSlot = 0;
     w.snakes = [putSnake(w, { x: 12, z: 9 }, 6, 1), putSnake(w, { x: 60, z: 60 }, 6, 2)];
     for (const s of w.snakes) s.stunTimer = 1e9;
     return w;
@@ -159,7 +159,7 @@ describe('firecracker', () => {
     expect(events.some((e) => e.type === 'itemUsed' && e.item === 'firecracker')).toBe(true);
     expect(w.projectiles).toHaveLength(1);
     expect(w.projectiles[0].kind).toBe('firecracker');
-    expect(w.inventory[0]).toBeNull();
+    expect(w.player.inventory[0]).toBeNull();
 
     let landedAt = -1;
     let bang: { x: number; z: number } | null = null;

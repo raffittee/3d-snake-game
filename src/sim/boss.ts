@@ -1,11 +1,12 @@
 import { BALANCE } from '../config/balance';
 import { splitInHalf } from './cut';
 import { worldToCell } from './grid';
+import { preyOf } from './hunt';
 import type { World } from './types';
 
 /** Set up the flashlight's battery and the Mother Snake's fight for a new level. */
 export function initBoss(world: World): void {
-  world.battery = world.level.flashlight ? BALANCE.cave.batteryStart : 0;
+  for (const p of world.players) p.battery = world.level.flashlight ? BALANCE.cave.batteryStart : 0;
   world.bossPhase = world.level.snake.boss ? 1 : 0;
   world.bossStartLength = world.level.snake.startLength;
 }
@@ -17,9 +18,11 @@ export function initBoss(world: World): void {
  * you and pulls its ring in, and you have to cut your way out.
  */
 export function updateBoss(world: World, dt: number): void {
-  if (world.level.flashlight && world.battery > 0) {
-    world.battery = Math.max(0, world.battery - dt);
-    if (world.battery === 0) world.events.push({ type: 'batteryDead' });
+  // Everyone carries a flashlight of their own.
+  for (const p of world.players) {
+    if (!world.level.flashlight || p.battery <= 0 || p.out) continue;
+    p.battery = Math.max(0, p.battery - dt);
+    if (p.battery === 0) world.events.push({ type: 'batteryDead', pid: p.id });
   }
   if (!world.bossPhase) return;
   const minSplit = BALANCE.snake.minSplitLength * 2;
@@ -41,10 +44,11 @@ export function updateBoss(world: World, dt: number): void {
     world.events.push({ type: 'bossPhase', phase: 3 });
   }
   if (world.bossPhase === 3) {
-    // The coil tightens while it is close to you.
-    const px = worldToCell(world.grid, world.player.x);
-    const pz = worldToCell(world.grid, world.player.z);
+    // The coil tightens while it is close to its prey.
     for (const s of world.snakes) {
+      const prey = preyOf(world, s);
+      const px = worldToCell(world.grid, prey.x);
+      const pz = worldToCell(world.grid, prey.z);
       const h = s.cells[0];
       if (s.stunTimer > 0 || Math.hypot(h.x - px, h.z - pz) > BALANCE.ai.coilReach) continue;
       s.coil = Math.max(BALANCE.ai.coilMinRadius, s.coil - BALANCE.ai.coilTighten * dt);

@@ -16,44 +16,44 @@ describe('player movement', () => {
   it('walks forward at walk speed', () => {
     const w = fresh();
     const z0 = w.player.z;
-    updatePlayer(w, input({ forward: 1 }), 1);
+    updatePlayer(w, w.player, input({ forward: 1 }), 1);
     expect(z0 - w.player.z).toBeCloseTo(BALANCE.player.walkSpeed);
   });
 
   it('does not move faster diagonally', () => {
     const w = fresh();
     const { x, z } = w.player;
-    updatePlayer(w, input({ forward: 1, strafe: 1 }), 1);
+    updatePlayer(w, w.player, input({ forward: 1, strafe: 1 }), 1);
     expect(Math.hypot(w.player.x - x, w.player.z - z)).toBeCloseTo(BALANCE.player.walkSpeed);
   });
 
   it('sprints faster and drains stamina', () => {
     const w = fresh();
     const z0 = w.player.z;
-    updatePlayer(w, input({ forward: 1, sprint: true }), 1);
+    updatePlayer(w, w.player, input({ forward: 1, sprint: true }), 1);
     expect(z0 - w.player.z).toBeCloseTo(BALANCE.player.sprintSpeed);
     expect(w.player.stamina).toBeCloseTo(1 - BALANCE.player.staminaDrain);
   });
 
   it('cannot sprint while standing still', () => {
     const w = fresh();
-    updatePlayer(w, input({ sprint: true }), 1);
+    updatePlayer(w, w.player, input({ sprint: true }), 1);
     expect(w.player.sprinting).toBe(false);
     expect(w.player.stamina).toBe(1);
   });
 
   it('gets tired at zero stamina and recovers past the threshold', () => {
     const w = fresh();
-    for (let i = 0; i < 40; i++) updatePlayer(w, input({ forward: 1, sprint: true }), 0.1);
+    for (let i = 0; i < 40; i++) updatePlayer(w, w.player, input({ forward: 1, sprint: true }), 0.1);
     expect(w.player.tired).toBe(true);
     // Resting: stamina regenerates, tired clears once above the recover level.
-    for (let i = 0; i < 30; i++) updatePlayer(w, input({}), 0.1);
+    for (let i = 0; i < 30; i++) updatePlayer(w, w.player, input({}), 0.1);
     expect(w.player.tired).toBe(false);
   });
 
   it('applies look deltas and clamps pitch', () => {
     const w = fresh();
-    updatePlayer(w, input({ lookYaw: 0.5, lookPitch: 5 }), 0.016);
+    updatePlayer(w, w.player, input({ lookYaw: 0.5, lookPitch: 5 }), 0.016);
     expect(w.player.yaw).toBeCloseTo(0.5);
     expect(w.player.pitch).toBe(BALANCE.player.maxPitch);
   });

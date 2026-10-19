@@ -244,6 +244,16 @@ Built on WebRTC. With 4 players each browser sends audio directly to the other 3
 - Everyone races to one exit while the snake hunts the whole field.
 - Firecrackers can be thrown at rivals to draw the snake onto them. First out wins.
 
+### Calls made while building it (Phase 4)
+Where this plan left room, these are the choices in the build. All numbers are in `BALANCE.multiplayer` and `BALANCE.pilot`; playtest them.
+- **Arenas:** a match uses the chosen terrain's campaign level, scaled to the map size. Its own goal, the boss fight, relics and the corn maze's blank minimap are off. The snake can be beaten in every mode. No perks or XP in matches.
+- **Classic:** the nest sits at the start point; it needs 6 pellets plus 3 per player. You carry up to 3 pellets at a time and lose them if you go down. A downed player nobody helps gets up at their start after 10 s. A teammate standing within 2.2 units for 2 s gets them up where they lie. Running out of time loses. The snake starts 2 segments longer per extra player and may grow 4 longer. Aggro lasts 8 s after a stone or a cut.
+- **Snake and Players:** runners have 3 lives, and a catch grows the snake by 3. Dash is on click/F, burrow on Space and tail whip on R. Steering is A/D or the mouse, and the snake's heading follows at a limited turn rate, which is its momentum.
+- **Infection:** a caught player rises as a snake 6 long after 1.5 s, steered like the snake in Snake and Players.
+- **Hot Egg:** the snake shoves anyone but the carrier aside rather than catching them. A pass cannot go back for 2 s. When the clock runs out, the carrier is out and everyone else wins.
+- **Escape Race:** caught, you are down for 3 s, then back at your start. Firecrackers drop about 6 times as often as anything else.
+- **Rounds:** a round win is a point. The scoreboard shows for 6 s between rounds, and after the last round everyone returns to the lobby. A dropped player has 12 s to reconnect, the host included.
+
 ## Tech and build milestones
 Build single player on a new modular base first. Multiplayer comes last because it needs a game server.
 

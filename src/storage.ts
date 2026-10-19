@@ -38,3 +38,40 @@ export function saveBest(score: number): void {
     // Storage unavailable: the best score just lasts for this page load.
   }
 }
+
+const NAME_KEY = 'snake-hunt-name';
+const TALK_KEY = 'snake-hunt-talk';
+
+/** Your multiplayer name, remembered between visits. */
+export function loadName(): string {
+  try {
+    return localStorage.getItem(NAME_KEY) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+export function saveName(name: string): void {
+  try {
+    localStorage.setItem(NAME_KEY, name);
+  } catch {
+    // Storage unavailable: type it again next time.
+  }
+}
+
+/** Push-to-talk or open mic, remembered between visits. */
+export function loadTalkMode(): 'ptt' | 'open' {
+  try {
+    return localStorage.getItem(TALK_KEY) === 'open' ? 'open' : 'ptt';
+  } catch {
+    return 'ptt';
+  }
+}
+
+export function saveTalkMode(mode: 'ptt' | 'open'): void {
+  try {
+    localStorage.setItem(TALK_KEY, mode);
+  } catch {
+    // Storage unavailable: push-to-talk next time.
+  }
+}

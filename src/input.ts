@@ -128,6 +128,11 @@ export class Input {
     return input;
   }
 
+  /** V is held: push-to-talk (multiplayer voice). Works while paused too, so you can talk from the menu. */
+  get pushToTalk(): boolean {
+    return this.keys.has('KeyV');
+  }
+
   /** Read and clear the largest single mouse delta seen. */
   takePeakDelta(): number {
     const p = this.peakDelta;
@@ -142,6 +147,9 @@ export class Input {
 
   private bindKeyboard(): void {
     window.addEventListener('keydown', (e) => {
+      // Typing a name or a room code is not playing.
+      const t = e.target;
+      if (t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t instanceof HTMLSelectElement) return;
       this.keys.add(e.code);
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
       if (e.code === 'Space' && !e.repeat && this.active) this.jumpQueued = true;

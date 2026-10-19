@@ -1,4 +1,5 @@
 import { BALANCE } from '../config/balance';
+import { minDistanceToPlayers } from './hunt';
 import { stepOffset } from './pathfinding';
 import { cellToWorld } from './grid';
 import { lerp } from './math';
@@ -28,6 +29,12 @@ export function makeSnake(world: Pick<World, 'grid' | 'level' | 'elapsed'>, id: 
     burrow: { mode: 'up', t: 0 },
     lurk: null,
     coil: BALANCE.ai.coilStartRadius,
+    prey: 0,
+    aggro: null,
+    pilot: null,
+    heading: 0,
+    dash: 0,
+    cooldowns: { dash: 0, burrow: 0, whip: 0 },
   };
   computeSegmentPositions(snake, world.grid, 0);
   return snake;
@@ -183,7 +190,7 @@ export function stepSnake(world: World, snake: SnakeState, tx: number, tz: numbe
   snake.steps++;
   const x = cellToWorld(grid, newHead.x);
   const z = cellToWorld(grid, newHead.z);
-  const distance = Math.hypot(x - world.player.x, z - world.player.z);
+  const distance = minDistanceToPlayers(world, x, z);
   world.events.push({ type: 'snakeStep', step: snake.steps, distance, x, z, hidden: world.tiles[hi] === Tile.Grass || underNow });
 }
 

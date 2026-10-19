@@ -16,6 +16,8 @@ import { MongooseViews } from './mongoose';
 import { IceViews } from './ice';
 import { HouseViews } from './house';
 import { CaveViews } from './cave';
+import { AvatarViews } from './avatars';
+import { MatchViews } from './matchViews';
 import type { Palette } from './palette';
 import { PelletViews } from './pellets';
 import { SnakeViews } from './snakes';
@@ -25,7 +27,13 @@ import type { TerrainLook } from './terrains';
 
 /** What the camera needs besides the world. Owned by the game layer. */
 export interface CameraView {
-  mode: 'menu' | 'play' | 'dead';
+  /**
+   * `follow`: third person, behind and above `follow` (multiplayer: steering a snake, or watching
+   * once you are out of the round).
+   */
+  mode: 'menu' | 'play' | 'dead' | 'follow';
+  /** What the follow camera trails: a point, the way it faces, how far back and how high. */
+  follow?: { x: number; z: number; yaw: number; back: number; height: number };
   /** Camera angles. In play mode the game copies them from the player each frame. */
   yaw: number;
   pitch: number;
@@ -79,6 +87,9 @@ export class GameRenderer {
   /** Physical units: candela; its light ends at 34 units. */
   private readonly flashlight = new THREE.SpotLight('#fff1d8', FLASHLIGHT, 34, 0.48, 0.55, 1.3);
   private mongooses = new MongooseViews();
+  /** Multiplayer: everyone else, and what the mode adds (the nest). */
+  readonly avatars: AvatarViews;
+  private match: MatchViews | null = null;
   private readonly viewmodel = new Viewmodel();
   private look: TerrainLook = terrainLook('plains');
   private world: World | null = null;
@@ -103,6 +114,7 @@ export class GameRenderer {
     this.drops = new DropViews(this.scene, palette.tiers);
     this.stones = new StoneViews(this.scene);
     this.crackers = new ItemEffects(this.scene);
+    this.avatars = new AvatarViews(palette.players);
     this.camera.rotation.order = 'YXZ';
     // The flashlight (Dark cave): a beam from just below and right of your eye, where you look.
     this.flashlight.position.set(0.25, -0.25, 0);
@@ -169,6 +181,8 @@ export class GameRenderer {
     this.swamp?.update(now);
     this.mounds?.update(world, now);
     this.mongooses.update(world, dt, now);
+    if (world.players.length > 1) this.avatars.update(world, world.player.id, dt);
+    this.match?.update(world, now);
     this.layout?.update(world, dt, now);
     this.placeSnake(world, view, dt, now);
     this.updateCamera(world, view, dt, now);
@@ -178,7 +192,7 @@ export class GameRenderer {
     this.cave?.update(now);
     if (this.flashlight.visible) {
       // Low battery: the beam stutters. Empty: dark.
-      const b = world.battery;
+      const b = world.player.battery;
       const flicker = b < BALANCE.cave.batteryLow ? (Math.sin(now * 0.047) * Math.sin(now * 0.0131) > 0.35 ? 0.15 : 1) : 1;
       this.flashlight.intensity = b > 0 ? FLASHLIGHT * flicker : 0;
       this.viewmodel.setLight(b > 0 ? 0.55 * flicker : 0.08);
@@ -191,7 +205,7 @@ export class GameRenderer {
     this.renderer.render(this.scene, this.camera);
     if (this.storm && this.storm.strength > 0.01) this.renderer.render(this.storm.veilScene, this.storm.veilCamera);
     const p = world.player;
-    this.viewmodel.update(world.inventory[world.selectedSlot] ?? null, view.mode === 'play', dt, view.bob, p.moving && p.y === 0 && !p.swimming, view.yaw, view.pitch, view.reducedMotion, p.swimming);
+    this.viewmodel.update(world.player.inventory[world.player.selectedSlot] ?? null, view.mode === 'play' && p.down <= 0, dt, view.bob, p.moving && p.y === 0 && !p.swimming, view.yaw, view.pitch, view.reducedMotion, p.swimming);
     this.renderer.clearDepth();
     this.renderer.render(this.viewmodel.scene, this.viewmodel.camera);
   }
@@ -305,6 +319,11 @@ export class GameRenderer {
     // Fresh per world: mongoose ids start again at 1 in each level.
     this.mongooses = new MongooseViews();
     this.arena.add(this.mongooses.group);
+    this.avatars.clear();
+    this.arena.add(this.avatars.group);
+    this.match?.dispose();
+    this.match = world.match ? new MatchViews(world) : null;
+    if (this.match) this.arena.add(this.match.group);
     this.scene.add(this.arena);
     this.fitSunToArena(world);
     this.pellets.clear();
@@ -333,7 +352,7 @@ export class GameRenderer {
   // --- per frame ---
 
   private placeSnake(world: World, view: CameraView, dt: number, now: number): void {
-    this.snakes.update(world, view, dt, now, world.killerId);
+    this.snakes.update(world, view, dt, now, world.player.killerId);
   }
 
   private updateCamera(world: World, view: CameraView, dt: number, now: number): void {
@@ -345,13 +364,24 @@ export class GameRenderer {
       this.camera.lookAt(0, 2, 0);
       return;
     }
+    if (view.mode === 'follow' && view.follow) {
+      // Third person: eased in behind and above the target, looking a little ahead of it.
+      const f = view.follow;
+      const fx = -Math.sin(f.yaw);
+      const fz = -Math.cos(f.yaw);
+      const limit = grid.half + 6;
+      const want = new THREE.Vector3(Math.min(limit, Math.max(-limit, f.x - fx * f.back)), f.height, Math.min(limit, Math.max(-limit, f.z - fz * f.back)));
+      this.camera.position.lerp(want, Math.min(1, dt * 8));
+      this.camera.lookAt(f.x + fx * 4, 0.8, f.z + fz * 4);
+      return;
+    }
     let camX = player.x;
     let camZ = player.z;
     if (view.mode === 'dead') {
       // The head stays on its body: it rears up and opens its jaws, and the camera backs off to
       // DEATH_CAM_DISTANCE in front of the snout so you look into them. (Sliding the head to the
       // camera instead left the neck running through the camera.)
-      const killer = world.snakes.find((s) => s.id === world.killerId) ?? world.snakes[0];
+      const killer = world.snakes.find((s) => s.id === world.player.killerId) ?? world.snakes[0];
       const killerView = this.snakes.view(killer?.id ?? null);
       if (!killer || !killerView) return;
       const h = killer.pos[0];
@@ -377,7 +407,8 @@ export class GameRenderer {
     }
     const bob = view.reducedMotion ? 0 : Math.sin(view.bob) * 0.05;
     const shake = view.reducedMotion ? 0 : view.mode === 'dead' ? Math.max(0, 0.25 - view.deathT * 0.25) : 0.05 * view.danger * view.danger;
-    const sink = view.mode === 'dead' ? Math.min(0.4, view.deathT) : 0;
+    // Downed (multiplayer): your eye lies near the ground.
+    const sink = view.mode === 'dead' ? Math.min(0.4, view.deathT) : player.down > 0 ? BALANCE.player.eyeHeight - 0.35 : 0;
     this.camera.position.set(
       camX + (Math.random() - 0.5) * shake,
       BALANCE.player.eyeHeight + player.y + bob + (Math.random() - 0.5) * shake - sink - this.swimDrop(player.swimming, player.inMud && player.y <= 0, now),

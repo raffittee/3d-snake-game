@@ -3,6 +3,7 @@ import type { Cell, SnakeState, World } from '../sim/types';
 import { BALANCE } from '../config/balance';
 import { inBounds, worldToCell } from '../sim/grid';
 import { Tile, blocksSnake } from '../sim/tiles';
+import { preyOf } from '../sim/hunt';
 
 /** Where a snake is heading. `cover`: it may only move through tall grass to get there (Stalk). */
 export interface Target extends Cell {
@@ -12,11 +13,11 @@ export interface Target extends Cell {
 /** A behavior decides which grid cell a snake is heading for. Pathfinding does the rest. */
 export type Behavior = (world: World, snake: SnakeState) => Target;
 
-/** Shortest path to wherever the player is standing right now. */
-const chase: Behavior = (world) => ({
-  x: worldToCell(world.grid, world.player.x),
-  z: worldToCell(world.grid, world.player.z),
-});
+/** Shortest path to wherever its prey (sim/hunt.ts) is standing right now. */
+const chase: Behavior = (world, snake) => {
+  const p = preyOf(world, snake);
+  return { x: worldToCell(world.grid, p.x), z: worldToCell(world.grid, p.z) };
+};
 
 /**
  * Heads for where the player will be about a second from now (their current velocity carried
@@ -26,7 +27,8 @@ const predict: Behavior = (world, snake) => ahead(world, snake, BALANCE.ai.predi
 
 /** The cell you will be on `t` seconds from now at your current velocity; your own cell if that one is blocked. */
 function ahead(world: World, snake: SnakeState, t: number): Target {
-  const { grid, player } = world;
+  const { grid } = world;
+  const player = preyOf(world, snake);
   const x = Math.round((player.x + player.vx * t + grid.half) / grid.cell - 0.5);
   const z = Math.round((player.z + player.vz * t + grid.half) / grid.cell - 0.5);
   if (inBounds(grid, x, z) && !world.pillars[z * grid.size + x] && !blocksSnake(world.tiles[z * grid.size + x])) return { x, z };
@@ -130,7 +132,7 @@ const flank: Behavior = (world, snake) => {
   const lead = world.snakes.reduce((a, b) => (b.id < a.id ? b : a), snake);
   const head = snake.cells[0];
   if (lead === snake || Math.hypot(head.x - you.x, head.z - you.z) <= BALANCE.ai.flankCloseCells) return you;
-  const { player } = world;
+  const player = preyOf(world, snake);
   let dx = player.vx;
   let dz = player.vz;
   if (Math.hypot(dx, dz) < 0.5) {
@@ -172,7 +174,7 @@ function lurkSpot(world: World, snake: SnakeState, you: Cell): Cell | null {
 
 /**
  * Ambush: it lies in wait near something you will come for, and strikes when it hears you (your
- * noise reaches it, `world.noise` in cells) or sees you right beside it, until you get away or hide.
+ * noise reaches it, a player's `noise` in cells) or sees you right beside it, until you get away or hide.
  * In a closet you are hidden from it unless it is right next to you.
  */
 const ambush: Behavior = (world, snake) => {
@@ -180,8 +182,11 @@ const ambush: Behavior = (world, snake) => {
   const head = snake.cells[0];
   const gap = Math.hypot(head.x - you.x, head.z - you.z);
   const beside = Math.max(Math.abs(head.x - you.x), Math.abs(head.z - you.z)) <= 1;
-  const hidden = world.player.hidden && !beside;
-  const notices = !hidden && (gap <= world.noise || gap <= BALANCE.ai.ambushSightCells);
+  const prey = preyOf(world, snake);
+  const hidden = prey.hidden && !beside;
+  // Anyone's noise wakes it, but it goes for its prey.
+  const heard = world.players.some((p) => Math.hypot(head.x - worldToCell(world.grid, p.x), head.z - worldToCell(world.grid, p.z)) <= p.noise);
+  const notices = !hidden && (heard || gap <= BALANCE.ai.ambushSightCells);
   const keeps = snake.striking && !hidden && gap <= BALANCE.ai.ambushReleaseCells;
   if (notices && !snake.striking) world.events.push({ type: 'snakeNoticed', x: snake.pos[0].x, z: snake.pos[0].z });
   snake.striking = notices || keeps;

@@ -111,7 +111,7 @@ describe('doors', () => {
     w.player.yaw = -Math.PI / 2;
     run(w, 1.5, { ...NO_INPUT, forward: 1 });
     expect(worldToCell(w.grid, w.player.x)).toBeLessThan(20);
-    expect(doorInReach(w)?.state).toBe(DoorState.Shut);
+    expect(doorInReach(w, w.player)?.state).toBe(DoorState.Shut);
     updateWorld(w, { ...NO_INPUT, interact: true }, DT);
     expect(drainEvents(w).some((e) => e.type === 'doorOpened')).toBe(true);
     expect(w.doorState[21 * n + 20]).toBe(DoorState.Open);
@@ -121,7 +121,7 @@ describe('doors', () => {
     w.player.yaw = Math.PI / 2;
     updateWorld(w, { ...NO_INPUT, interact: true }, DT);
     expect(drainEvents(w).some((e) => e.type === 'doorShut')).toBe(true);
-    expect(w.noise).toBe(BALANCE.noise.slam);
+    expect(w.player.noise).toBe(BALANCE.noise.slam);
   });
 
   it('it will not shut on you', () => {

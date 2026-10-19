@@ -1,11 +1,11 @@
 import { BALANCE } from '../config/balance';
 import { isUnder } from './snake';
-import type { SnakeState, World } from './types';
+import type { PlayerState, SnakeState, World } from './types';
 
-/** Let a mongoose go at your feet. */
-export function releaseMongoose(world: World): void {
-  world.mongooses.push({ id: world.nextMongooseId++, x: world.player.x, z: world.player.z, time: BALANCE.items.defs.mongoose.seconds, targetId: null, fighting: false });
-  world.events.push({ type: 'mongooseReleased' });
+/** Player `p` lets a mongoose go at their feet. */
+export function releaseMongoose(world: World, p: PlayerState): void {
+  world.mongooses.push({ id: world.nextMongooseId++, x: p.x, z: p.z, time: BALANCE.items.defs.mongoose.seconds, targetId: null, fighting: false, owner: p.id });
+  world.events.push({ type: 'mongooseReleased', pid: p.id });
 }
 
 /**
@@ -37,9 +37,10 @@ export function updateMongooses(world: World, dt: number): void {
       }
     }
     m.targetId = target ? target.id : null;
-    // Run at the snake's head, or wait a step away from you.
-    const tx = target ? target.pos[0].x : world.player.x + 1;
-    const tz = target ? target.pos[0].z : world.player.z + 1;
+    // Run at the snake's head, or wait a step away from whoever let it out.
+    const owner = world.players[m.owner] ?? world.players[0];
+    const tx = target ? target.pos[0].x : owner.x + 1;
+    const tz = target ? target.pos[0].z : owner.z + 1;
     const d = Math.hypot(tx - m.x, tz - m.z);
     const stop = target ? cfg.reach * 0.8 : 1;
     if (d > stop) {

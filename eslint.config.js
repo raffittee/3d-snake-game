@@ -10,4 +10,11 @@ export default tseslint.config(
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
     },
   },
+  {
+    // Game rules act on a given player (multiplayer has several); world.player is single-player shorthand.
+    files: ['src/sim/**', 'src/ai/**', 'src/items/**', 'server/**'],
+    rules: {
+      'no-restricted-properties': ['error', { object: 'world', property: 'player', message: 'Take the player the rule acts on (world.players[id]); world.player is single-player shorthand.' }],
+    },
+  },
 );
