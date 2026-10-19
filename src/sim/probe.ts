@@ -3,7 +3,7 @@ import { inBounds, worldToCell } from './grid';
 import { jumpableTail } from './perks';
 import { isShutDoor, tileHeight } from './tiles';
 import { hasTail, isUnder, segmentHalfWidth, segmentHeight } from './snake';
-import type { SnakeState, World } from './types';
+import type { PlayerState, SnakeState, World } from './types';
 
 /** What a point (a stone, a blade) is touching. */
 export type Probe =
@@ -44,9 +44,8 @@ export function probeAt(world: World, x: number, y: number, z: number, r: number
   return null;
 }
 
-/** March along a ray from the player's eye (view direction) up to `reach`, returning the first thing it touches. */
-export function probeView(world: World, reach: number, r: number): Probe | null {
-  const { player } = world;
+/** March along a ray from `player`'s eye (view direction) up to `reach`, returning the first thing it touches. */
+export function probeView(world: World, player: PlayerState, reach: number, r: number): Probe | null {
   const cp = Math.cos(player.pitch);
   const dx = -Math.sin(player.yaw) * cp;
   const dy = Math.sin(player.pitch);
@@ -58,4 +57,24 @@ export function probeView(world: World, reach: number, r: number): Probe | null 
     if (hit) return hit;
   }
   return null;
+}
+
+/**
+ * Whether something taller than a person stands on the straight line between two points (a rock,
+ * a full-height wall, corn, a shut door). Low walls and water do not count. Used for proximity
+ * voice: a voice behind a wall sounds muffled.
+ */
+export function wallBetween(world: World, ax: number, az: number, bx: number, bz: number): boolean {
+  const { grid } = world;
+  const d = Math.hypot(bx - ax, bz - az);
+  const steps = Math.ceil(d / (grid.cell * 0.5));
+  for (let k = 1; k < steps; k++) {
+    const t = k / steps;
+    const cx = worldToCell(grid, ax + (bx - ax) * t);
+    const cz = worldToCell(grid, az + (bz - az) * t);
+    if (!inBounds(grid, cx, cz)) continue;
+    const i = cz * grid.size + cx;
+    if (world.pillars[i] || tileHeight(world.tiles[i]) >= BALANCE.player.eyeHeight || isShutDoor(world, i)) return true;
+  }
+  return false;
 }

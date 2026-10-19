@@ -39,12 +39,12 @@ function hoverOver(w: World, i: number, y: number): void {
 describe('jumping', () => {
   it('rises, comes back down to the ground, and costs stamina', () => {
     const w = createWorld(level01, 1);
-    updatePlayer(w, JUMP, 0.01);
+    updatePlayer(w, w.player, JUMP, 0.01);
     expect(w.player.y).toBeGreaterThan(0);
     expect(w.player.stamina).toBeCloseTo(1 - jumpStaminaCost);
     let peak = 0;
     for (let t = 0; t < 1.5; t += 0.01) {
-      updatePlayer(w, NO_INPUT, 0.01);
+      updatePlayer(w, w.player, NO_INPUT, 0.01);
       peak = Math.max(peak, w.player.y);
     }
     expect(peak).toBeCloseTo(apex, 1);
@@ -54,10 +54,10 @@ describe('jumping', () => {
 
   it('cannot jump again in mid-air', () => {
     const w = createWorld(level01, 1);
-    updatePlayer(w, JUMP, 0.05);
+    updatePlayer(w, w.player, JUMP, 0.05);
     const stamina = w.player.stamina;
     const vy = w.player.vy;
-    updatePlayer(w, JUMP, 0.05);
+    updatePlayer(w, w.player, JUMP, 0.05);
     expect(w.player.vy).toBeLessThan(vy);
     expect(w.player.stamina).toBeGreaterThanOrEqual(stamina);
   });
@@ -65,13 +65,13 @@ describe('jumping', () => {
   it('cannot jump without enough stamina or while tired', () => {
     const low = createWorld(level01, 1);
     low.player.stamina = jumpStaminaCost / 2;
-    updatePlayer(low, JUMP, 0.01);
+    updatePlayer(low, low.player, JUMP, 0.01);
     expect(low.player.y).toBe(0);
 
     const tired = createWorld(level01, 1);
     tired.player.tired = true;
     tired.player.stamina = 0.3;
-    updatePlayer(tired, JUMP, 0.01);
+    updatePlayer(tired, tired.player, JUMP, 0.01);
     expect(tired.player.y).toBe(0);
   });
 
@@ -116,7 +116,7 @@ describe('jumping', () => {
   it('jumping onto a body segment is not a way to dodge a crush', () => {
     const w = worldWithLongSnake();
     w.invulnerable = false;
-    w.lives = 1;
+    w.player.lives = 1;
     // Deep inside a body segment while low in the air: still counts as being crushed.
     const c = w.snakes[0].cells[3];
     w.player.x = cellToWorld(w.grid, c.x);

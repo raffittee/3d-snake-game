@@ -143,7 +143,7 @@ describe('walls', () => {
     w.player.yaw = 0;
     w.player.pitch = 0;
     w.tiles[(pc.z - 3) * w.grid.size + pc.x] = Tile.LowWall;
-    w.inventory[0] = { item: 'slingshot', tier: 'white', uses: 3, spoilLeft: 40, spoilTotal: 40 };
+    w.player.inventory[0] = { item: 'slingshot', tier: 'white', uses: 3, spoilLeft: 40, spoilTotal: 40 };
     updateWorld(w, { ...NO_INPUT, useItem: true }, 0.01);
     for (let i = 0; i < 6; i++) updateWorld(w, NO_INPUT, 0.02);
     expect(w.projectiles).toHaveLength(1);

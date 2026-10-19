@@ -2,7 +2,8 @@ import { BALANCE } from '../config/balance';
 import { worldToCell } from './grid';
 import { probeAt } from './probe';
 import type { Probe } from './probe';
-import type { HitTarget, Projectile, World } from './types';
+import type { HitTarget, PlayerState, Projectile, World } from './types';
+import { provoke } from './hunt';
 
 /** Longest move per collision check, so a fast stone cannot skip through a thin target between frames. */
 const SUBSTEP = 0.25;
@@ -10,16 +11,14 @@ const SUBSTEP = 0.25;
 const MUZZLE = 0.4;
 
 /** Unit view direction (yaw and pitch, plus `lift` radians of extra pitch). Forward is -z at yaw 0. */
-function aim(world: World, lift = 0): [number, number, number] {
-  const { player } = world;
+function aim(player: PlayerState, lift = 0): [number, number, number] {
   const pitch = Math.min(Math.PI / 2 - 0.05, player.pitch + lift);
   const cp = Math.cos(pitch);
   return [-Math.sin(player.yaw) * cp, Math.sin(pitch), -Math.cos(player.yaw) * cp];
 }
 
-function launch(world: World, kind: Projectile['kind'], speed: number, life: number, lift: number): void {
-  const { player } = world;
-  const [dx, dy, dz] = aim(world, lift);
+function launch(world: World, player: PlayerState, kind: Projectile['kind'], speed: number, life: number, lift: number): void {
+  const [dx, dy, dz] = aim(player, lift);
   const y = BALANCE.player.eyeHeight + player.y;
   world.projectiles.push({
     kind,
@@ -30,22 +29,23 @@ function launch(world: World, kind: Projectile['kind'], speed: number, life: num
     vy: dy * speed,
     vz: dz * speed,
     life,
+    owner: player.id,
   });
 }
 
-/** Launch a slingshot stone from the player's eye, along the view direction (yaw and pitch). */
-export function fireStone(world: World): void {
+/** Launch a slingshot stone from player `p`'s eye, along their view direction (yaw and pitch). */
+export function fireStone(world: World, p: PlayerState): void {
   const cfg = BALANCE.items.defs.slingshot;
-  launch(world, 'stone', cfg.stoneSpeed, cfg.stoneLife, 0);
-  world.events.push({ type: 'shotFired' });
+  launch(world, p, 'stone', cfg.stoneSpeed, cfg.stoneLife, 0);
+  world.events.push({ type: 'shotFired', pid: p.id });
 }
 
 /** Throw a lit firecracker along the crosshair, tipped up into an arc. It bangs where it lands. */
-export function throwFirecracker(world: World): void {
+export function throwFirecracker(world: World, p: PlayerState): void {
   const cfg = BALANCE.items.defs.firecracker;
   // Long enough to always come down: the arena is never wider than this flight.
-  launch(world, 'firecracker', cfg.throwSpeed, 10, cfg.throwLift);
-  world.events.push({ type: 'firecrackerThrown' });
+  launch(world, p, 'firecracker', cfg.throwSpeed, 10, cfg.throwLift);
+  world.events.push({ type: 'firecrackerThrown', pid: p.id });
 }
 
 /** A firecracker came down at (x, z): it lies there with its fuse burning. */
@@ -94,7 +94,8 @@ export function updateProjectiles(world: World, dt: number): void {
     }
     if (hit) {
       world.projectiles.splice(i, 1);
-      world.events.push({ type: 'shotHit', target: hit.kind as HitTarget });
+      world.events.push({ type: 'shotHit', pid: s.owner, target: hit.kind as HitTarget });
+      if (hit.kind === 'head' || hit.kind === 'body') provoke(hit.snake, s.owner);
       if (hit.kind === 'head') {
         // A second hit resets that snake's stun; it never stacks.
         hit.snake.stunTimer = sling.stunSeconds;

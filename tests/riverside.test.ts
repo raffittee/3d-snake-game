@@ -92,14 +92,14 @@ describe('water and the swim ring', () => {
   it('with a swim ring you swim in, slower, and the ring drains only in the water', () => {
     const w = quietWorld();
     const edge = atRiverEdge(w);
-    w.inventory[1] = makeHeld('swimRing', 'white');
-    const full = w.inventory[1].uses;
+    w.player.inventory[1] = makeHeld('swimRing', 'white');
+    const full = w.player.inventory[1].uses;
     updateWorld(w, { ...NO_INPUT, forward: 1 }, 0.5);
-    expect(w.inventory[1]?.uses).toBe(full);
+    expect(w.player.inventory[1]?.uses).toBe(full);
     for (let i = 0; i < 30; i++) updateWorld(w, { ...NO_INPUT, forward: 1 }, 0.05);
     expect(worldToCell(w.grid, w.player.z)).toBeLessThanOrEqual(edge.z);
     expect(w.player.swimming).toBe(true);
-    expect(w.inventory[1]?.uses ?? 0).toBeLessThan(full);
+    expect(w.player.inventory[1]?.uses ?? 0).toBeLessThan(full);
     // Swimming is slower than walking.
     const z0 = w.player.z;
     updateWorld(w, { ...NO_INPUT, forward: 1, sprint: true }, 1);
@@ -108,22 +108,22 @@ describe('water and the swim ring', () => {
 
   it('using the swim ring does nothing (it works on its own)', () => {
     const w = quietWorld();
-    w.inventory[0] = makeHeld('swimRing', 'white');
-    const uses = w.inventory[0].uses;
+    w.player.inventory[0] = makeHeld('swimRing', 'white');
+    const uses = w.player.inventory[0].uses;
     updateWorld(w, { ...NO_INPUT, useItem: true }, 0.01);
-    expect(w.inventory[0]?.uses).toBe(uses);
+    expect(w.player.inventory[0]?.uses).toBe(uses);
   });
 
   it('when the ring runs out in deep water you drown and lose a life', () => {
     const w = quietWorld();
     w.invulnerable = false;
     atRiverEdge(w);
-    w.inventory[0] = makeHeld('swimRing', 'white');
+    w.player.inventory[0] = makeHeld('swimRing', 'white');
     for (let i = 0; i < 30; i++) updateWorld(w, { ...NO_INPUT, forward: 1 }, 0.05);
     expect(w.player.swimming).toBe(true);
-    (w.inventory[0] as { uses: number }).uses = 0.1;
-    for (let i = 0; i < 10 && w.lives === BALANCE.lives.perLevel; i++) updateWorld(w, NO_INPUT, 0.05);
-    expect(w.lives).toBe(BALANCE.lives.perLevel - 1);
+    (w.player.inventory[0] as { uses: number }).uses = 0.1;
+    for (let i = 0; i < 10 && w.player.lives === BALANCE.lives.perLevel; i++) updateWorld(w, NO_INPUT, 0.05);
+    expect(w.player.lives).toBe(BALANCE.lives.perLevel - 1);
     expect(drainEvents(w).some((e) => e.type === 'lifeLost' && e.cause === 'drowned')).toBe(true);
   });
 });
@@ -164,7 +164,7 @@ describe('pellet speed boost', () => {
       const x0 = w.player.x;
       const z0 = w.player.z;
       w.player.yaw = 0;
-      updatePlayer(w, { ...NO_INPUT, forward: 1 }, 0.1);
+      updatePlayer(w, w.player, { ...NO_INPUT, forward: 1 }, 0.1);
       const d = Math.hypot(w.player.x - x0, w.player.z - z0) / 0.1;
       w.player.x = x0;
       w.player.z = z0;

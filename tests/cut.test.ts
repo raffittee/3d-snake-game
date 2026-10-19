@@ -137,14 +137,14 @@ describe('several snakes', () => {
   it('a split-off snake can catch you too', () => {
     const w = world(16);
     w.invulnerable = false;
-    w.lives = 1;
+    w.player.lives = 1;
     cutSnake(w, w.snakes[0], 7);
     const born = w.snakes[1];
     w.player.x = born.pos[0].x;
     w.player.z = born.pos[0].z;
     updateWorld(w, NO_INPUT, 0.01);
     expect(w.status).toBe('dead');
-    expect(w.killerId).toBe(born.id);
+    expect(w.player.killerId).toBe(born.id);
   });
 
   it('a stone stuns only the snake it hits', () => {
@@ -158,7 +158,7 @@ describe('several snakes', () => {
     w.player.z = head.z + 12;
     w.player.yaw = 0;
     w.player.pitch = 0;
-    w.inventory[0] = { item: 'slingshot', tier: 'white', uses: 3, spoilLeft: 40, spoilTotal: 40 };
+    w.player.inventory[0] = { item: 'slingshot', tier: 'white', uses: 3, spoilLeft: 40, spoilTotal: 40 };
     updateWorld(w, { ...NO_INPUT, useItem: true }, 0.01);
     for (let i = 0; i < 60 && w.projectiles.length; i++) updateWorld(w, NO_INPUT, 0.02);
     expect(front.stunTimer).toBeGreaterThan(0);

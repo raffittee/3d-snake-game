@@ -1,6 +1,7 @@
 import { BALANCE } from '../config/balance';
 import { cellToWorld, worldToCell } from './grid';
 import type { SnakeState, World } from './types';
+import { preyOf } from './hunt';
 
 /**
  * Burrow (Level 7): a snake on the surface that has cooled down and is far enough from you dives
@@ -10,11 +11,13 @@ import type { SnakeState, World } from './types';
  * of it cannot touch you. Returns true while it must hold still (rising).
  */
 export function updateBurrow(world: World, snake: SnakeState, dt: number): boolean {
-  if (world.level.snake.behavior !== 'burrow') return false;
+  // A steered snake burrows when its pilot says so (sim/pilot.ts).
+  if (world.level.snake.behavior !== 'burrow' || snake.pilot !== null) return false;
   const cfg = BALANCE.ai;
   const b = snake.burrow;
   const head = snake.cells[0];
-  const gap = Math.hypot(head.x - worldToCell(world.grid, world.player.x), head.z - worldToCell(world.grid, world.player.z));
+  const prey = preyOf(world, snake);
+  const gap = Math.hypot(head.x - worldToCell(world.grid, prey.x), head.z - worldToCell(world.grid, prey.z));
   const at = { x: cellToWorld(world.grid, head.x), z: cellToWorld(world.grid, head.z) };
   if (b.mode === 'up') {
     b.t += dt;

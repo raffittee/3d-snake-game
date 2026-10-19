@@ -4,7 +4,7 @@ import type { LevelConfig } from '../levels/types';
 import { overlapDepth, pushOut } from './collision';
 import { cellToWorld, inBounds, makeGrid, worldToCell } from './grid';
 import { goalMet } from './goals';
-import { createInventory, updateItems } from './items';
+import { spawnDrops, updateItems } from './items';
 import { hasPerk, inventorySlots, jumpableTail } from './perks';
 import type { PerkId } from './perks';
 import { updateFirecrackers, updateProjectiles } from './projectiles';
@@ -12,6 +12,8 @@ import { updateBurrow } from './burrow';
 import { updateMongooses } from './mongoose';
 import { stormWarningWave } from './weather';
 import { generateLayout } from './layouts';
+import { MODES } from './modes';
+import { pilotTarget } from './pilot';
 import { generatePillars } from './pillars';
 import { Tile, isIce, isOpenGround, isShutDoor, tileHeight } from './tiles';
 import { initDoors, updateHouse } from './house';
@@ -19,14 +21,19 @@ import { initBoss, updateBoss } from './boss';
 import { updateIce } from './ice';
 import { Pathfinder } from './pathfinding';
 import { spawnPellet } from './pellets';
-import { createPlayer, updatePlayer } from './player';
+import { NO_INPUT, createPlayer, placePlayer, updatePlayer } from './player';
+import { catchable, choosePrey, onFoot } from './hunt';
 import { createRng } from './rng';
 import { updateGrowthSplit } from './cut';
 import { advanceSnake, createSnake, hasTail, isUnder, segmentHalfWidth, segmentHeight } from './snake';
-import type { DeathCause, PlayerInput, SimEvent, SnakeState, World } from './types';
+import type { DeathCause, PlayerInput, PlayerState, SimEvent, SnakeState, World } from './types';
 
-/** Build a fresh game for `level`. The same level and seed always give the same arena. */
-export function createWorld(level: LevelConfig, seed: number, perks: PerkId[] = []): World {
+/**
+ * Build a fresh game for `level` with `playerCount` players (all on the start point). The same
+ * level and seed always give the same arena, so a multiplayer client can build the server's arena
+ * itself and only receive what moves.
+ */
+export function createWorld(level: LevelConfig, seed: number, perks: PerkId[] = [], playerCount = 1): World {
   const grid = makeGrid(level.size, BALANCE.cellSize);
   const rng = createRng(seed);
   const layout = generateLayout(level, grid, rng);
@@ -48,7 +55,7 @@ export function createWorld(level: LevelConfig, seed: number, perks: PerkId[] = 
     boosts: [],
     gate,
     gateOpen: false,
-    player: createPlayer(grid, level.start),
+    players: Array.from({ length: playerCount }, (_, id) => createPlayer(grid, level.start, id, inventorySlots(perks))),
     pellets: [],
     nextPelletId: 1,
     pelletRespawn: 0,
@@ -56,9 +63,6 @@ export function createWorld(level: LevelConfig, seed: number, perks: PerkId[] = 
     pelletsCollected: 0,
     perks: [...perks],
     xpGained: 0,
-    secondWindUsed: false,
-    inventory: createInventory(inventorySlots(perks)),
-    selectedSlot: 0,
     drops: [],
     projectiles: [],
     firecrackers: [],
@@ -69,29 +73,25 @@ export function createWorld(level: LevelConfig, seed: number, perks: PerkId[] = 
     cracking: [],
     doorState: new Uint8Array(n * n),
     doorDamage: new Float32Array(n * n),
-    noise: 0,
-    slam: 0,
     bossPhase: 0,
     bossStartLength: 0,
-    battery: 0,
     snakes: [],
     nextSnakeId: 1,
     severed: [],
-    killerId: null,
     nextDropId: 1,
     dropTimer: level.items.firstDropAfter,
-    lives: BALANCE.lives.perLevel,
-    graceTimer: 0,
+    match: null,
     status: 'playing',
     deathCause: null,
     invulnerable: false,
     events: [],
   } as unknown as World;
+  Object.defineProperty(world, 'player', { get: () => world.players[0], enumerable: false, configurable: true });
   initDoors(world);
   initBoss(world);
   world.snakes.push(createSnake(world));
   for (const spawn of level.snake.extraSpawns ?? []) world.snakes.push(createSnake(world, spawn));
-  faceSnake(world);
+  for (const p of world.players) faceSnake(world, p);
   for (let i = 0; i < level.pelletCount; i++) spawnPellet(world);
   return world;
 }
@@ -99,13 +99,14 @@ export function createWorld(level: LevelConfig, seed: number, perks: PerkId[] = 
 export const scoreOf = (world: World): number =>
   Math.floor(world.elapsed * BALANCE.score.pointsPerSecond) + world.pelletsCollected * BALANCE.pellets.points;
 
-/** The snake whose head is nearest the player (the one to worry about), or null when none is left. */
-export function nearestSnake(world: World): SnakeState | null {
+/** The snake whose head is nearest player `p` (the one to worry about), or null when none is left. A snake `p` steers does not count. */
+export function nearestSnake(world: World, p: PlayerState): SnakeState | null {
   let best: SnakeState | null = null;
   let bestD = Infinity;
   for (const s of world.snakes) {
+    if (s.pilot === p.id) continue;
     const h = s.pos[0];
-    const d = Math.hypot(h.x - world.player.x, h.z - world.player.z);
+    const d = Math.hypot(h.x - p.x, h.z - p.z);
     if (d < bestD) {
       bestD = d;
       best = s;
@@ -114,12 +115,12 @@ export function nearestSnake(world: World): SnakeState | null {
   return best;
 }
 
-/** Distance in world units from the nearest snake head to the player, minus the head's size. Never negative. */
-export function gapToSnake(world: World): number {
-  const s = nearestSnake(world);
+/** Distance in world units from the nearest snake head to player `p`, minus the head's size. Never negative. */
+export function gapToSnake(world: World, p: PlayerState): number {
+  const s = nearestSnake(world, p);
   if (!s) return Infinity;
   const head = s.pos[0];
-  return Math.max(0, Math.hypot(head.x - world.player.x, head.z - world.player.z) - BALANCE.danger.gapOffset);
+  return Math.max(0, Math.hypot(head.x - p.x, head.z - p.z) - BALANCE.danger.gapOffset);
 }
 
 /** 0 when the snake is far away, 1 when it is on top of you. Drives the red screen edge. */
@@ -134,53 +135,69 @@ export function drainEvents(world: World): SimEvent[] {
   return events;
 }
 
-function faceSnake(world: World): void {
-  const s = nearestSnake(world);
+export function faceSnake(world: World, p: PlayerState): void {
+  const s = nearestSnake(world, p);
   if (!s) return;
   const head = s.pos[0];
-  world.player.yaw = Math.atan2(-(head.x - world.player.x), -(head.z - world.player.z));
-  world.player.pitch = 0;
+  p.yaw = Math.atan2(-(head.x - p.x), -(head.z - p.z));
+  p.pitch = 0;
 }
 
-/** Lose a life. With lives left, respawn at the start point and leave the snakes as they are. */
-function kill(world: World, cause: DeathCause, by: SnakeState | null): void {
-  if (world.invulnerable || world.graceTimer > 0) return;
-  if (by && hasPerk(world, 'secondWind') && !world.secondWindUsed) {
+/**
+ * Player `p` was caught (or drowned, or fell in). Multiplayer modes decide what that means
+ * (sim/modes.ts). In the campaign: lose a life, and with lives left respawn at the start point and
+ * leave the snakes as they are.
+ */
+export function kill(world: World, p: PlayerState, cause: DeathCause, by: SnakeState | null): void {
+  if (world.invulnerable || p.graceTimer > 0) return;
+  if (by && hasPerk(world, 'secondWind') && !p.secondWindUsed) {
     // Knocked back instead: thrown away from the snake's head, a moment of grace, no life lost.
-    world.secondWindUsed = true;
+    p.secondWindUsed = true;
     const head = by.pos[0];
-    const dx = world.player.x - head.x;
-    const dz = world.player.z - head.z;
+    const dx = p.x - head.x;
+    const dz = p.z - head.z;
     const d = Math.hypot(dx, dz) || 1;
     const kb = BALANCE.perks.secondWindKnockback;
     const lim = world.grid.half - BALANCE.player.radius;
-    world.player.x = Math.min(lim, Math.max(-lim, world.player.x + (dx / d) * kb));
-    world.player.z = Math.min(lim, Math.max(-lim, world.player.z + (dz / d) * kb));
-    world.graceTimer = BALANCE.perks.secondWindGrace;
-    world.events.push({ type: 'secondWind' });
+    p.x = Math.min(lim, Math.max(-lim, p.x + (dx / d) * kb));
+    p.z = Math.min(lim, Math.max(-lim, p.z + (dz / d) * kb));
+    p.graceTimer = BALANCE.perks.secondWindGrace;
+    world.events.push({ type: 'secondWind', pid: p.id });
     return;
   }
-  world.killerId = by ? by.id : null;
-  world.lives = Math.max(0, world.lives - 1);
-  if (world.lives > 0) {
-    world.player = createPlayer(world.grid, world.level.start);
-    faceSnake(world);
-    world.graceTimer = BALANCE.lives.respawnGrace;
-    world.events.push({ type: 'lifeLost', cause, livesLeft: world.lives });
+  p.killerId = by ? by.id : null;
+  if (world.match) {
+    MODES[world.match.mode].caught(world, p, cause, by);
+    return;
+  }
+  p.lives = Math.max(0, p.lives - 1);
+  if (p.lives > 0) {
+    respawn(world, p);
+    world.events.push({ type: 'lifeLost', pid: p.id, cause, livesLeft: p.lives });
     return;
   }
   world.status = 'dead';
   world.deathCause = cause;
-  world.events.push({ type: 'died', cause });
+  world.events.push({ type: 'died', pid: p.id, cause });
 }
 
-/** Push the player out of every snake body and the pillars, then decide whether they died. */
-function resolveCollisions(world: World): void {
-  const { player, grid, pillars } = world;
+/** Back on the start point, facing the nearest snake, with a moment of grace. Keeps items and lives. */
+export function respawn(world: World, p: PlayerState): void {
+  placePlayer(p, world.grid, world.match?.spawns[p.id] ?? world.level.start);
+  faceSnake(world, p);
+  p.graceTimer = BALANCE.lives.respawnGrace;
+}
+
+/**
+ * Push `player` out of every snake body, wall and pillar, and update what they stand in. Pure
+ * movement: nobody is caught here, so a multiplayer client can run it to predict its own player.
+ */
+export function collidePlayer(world: World, player: PlayerState): void {
+  const { grid, pillars } = world;
   const r = BALANCE.player.radius;
   const jump = jumpableTail(world);
   // Deep water: a wall unless you carry a swim ring with time left.
-  const canSwim = swimRingSlot(world) >= 0;
+  const canSwim = swimRingSlot(player) >= 0;
   const wcx = worldToCell(grid, player.x);
   const wcz = worldToCell(grid, player.z);
   // A hole in the ice (Frozen lake) is open water you cannot swim in: always a wall.
@@ -230,55 +247,78 @@ function resolveCollisions(world: World): void {
   }
   player.x = Math.min(Math.max(player.x, -grid.half + r), grid.half - r);
   player.z = Math.min(Math.max(player.z, -grid.half + r), grid.half - r);
+}
 
+/** Whether a snake head has caught `player`, or a body squeezed them against something. A snake does not catch its own pilot. */
+function catchPlayer(world: World, player: PlayerState): void {
+  const r = BALANCE.player.radius;
+  const jump = jumpableTail(world);
   for (const snake of world.snakes) {
+    if (snake.pilot === player.id) continue;
     const len = snake.pos.length;
     const tail = hasTail(snake);
     // Under the sand (Burrow) it can't touch you.
     const below = (i: number): boolean => player.y < segmentHeight(i, len, tail, jump) && !isUnder(snake, i);
     const head = snake.pos[0];
-    if (below(0) && overlapDepth(player, r, head.x, head.z, BALANCE.snake.headHalfWidth) > 0) return kill(world, 'caught', snake);
+    if (below(0) && overlapDepth(player, r, head.x, head.z, BALANCE.snake.headHalfWidth) > 0) return kill(world, player, 'caught', snake);
     for (let i = 1; i < len; i++) {
-      if (below(i) && overlapDepth(player, r, snake.pos[i].x, snake.pos[i].z, segmentHalfWidth(i, len, tail)) > BALANCE.snake.crushOverlap) return kill(world, 'crushed', snake);
+      if (below(i) && overlapDepth(player, r, snake.pos[i].x, snake.pos[i].z, segmentHalfWidth(i, len, tail)) > BALANCE.snake.crushOverlap) return kill(world, player, 'crushed', snake);
     }
   }
 }
 
-/** Advance the whole game by `dt` seconds. Does nothing once the player has died or the level is complete. */
-export function updateWorld(world: World, input: PlayerInput, dt: number): void {
+/**
+ * Advance the whole game by `dt` seconds. `input` is one input for single player, or one per player
+ * (by id; a missing one means no input). Does nothing once the game is over.
+ */
+export function updateWorld(world: World, input: PlayerInput | readonly PlayerInput[], dt: number): void {
   if (world.status !== 'playing') return;
+  const inputs: readonly PlayerInput[] = Array.isArray(input) ? input : [input as PlayerInput];
+  const inputOf = (p: PlayerState): PlayerInput => inputs[p.id] ?? NO_INPUT;
   world.elapsed += dt;
-  world.graceTimer = Math.max(0, world.graceTimer - dt);
-  updatePlayer(world, input, dt);
-  // Doors (R), hiding in closets, and how far your noise carries (Broken house; noise counts anywhere).
-  updateHouse(world, input, dt);
+  for (const p of world.players) {
+    p.graceTimer = Math.max(0, p.graceTimer - dt);
+    if (!onFoot(p)) continue;
+    updatePlayer(world, p, inputOf(p), dt);
+    // Doors (R), hiding in closets, and how far your noise carries (Broken house; noise counts anywhere).
+    updateHouse(world, p, inputOf(p), dt);
+  }
+  if (world.match) MODES[world.match.mode].beforeSnakes(world, inputs, dt);
 
   const cfg = world.level.snake;
   // A copy: a growth split adds a snake mid-loop, and it should first move next update.
   for (const snake of [...world.snakes]) {
     snake.interval = Math.max(cfg.minInterval, cfg.baseInterval - world.elapsed * cfg.rampPerSecond);
+    if (world.match) snake.interval *= world.match.speedScale;
     // It swims too, but slower.
     const head = snake.cells[0];
     if (world.tiles[head.z * world.grid.size + head.x] === Tile.Water) snake.interval *= BALANCE.river.snakeSwimSlow;
     // Burrowing: faster under the sand.
     if (snake.burrow.mode === 'down') snake.interval *= BALANCE.ai.burrowSpeed;
-    // A lure (firecracker, smoke bomb) runs out on its own clock, stunned or not.
+    // Dashing (a steered snake's ability): faster still.
+    if (snake.dash > 0) snake.interval *= BALANCE.pilot.dashSpeed;
+    // A lure (firecracker, smoke bomb) runs out on its own clock, stunned or not; so does a grudge.
     if (snake.lure && (snake.lure.time -= dt) <= 0) snake.lure = null;
+    if (snake.aggro && (snake.aggro.time -= dt) <= 0) snake.aggro = null;
     if (snake.stunTimer > 0) {
       // Stunned (or dazed after splitting off, or pinned by a mongoose): frozen, no steps and no growth. Its body still blocks.
       snake.stunTimer = Math.max(0, snake.stunTimer - dt);
       continue;
     }
+    // Who it hunts: whoever hit it last, else the nearest player it can catch.
+    snake.prey = choosePrey(world, snake);
     // About to break the surface (Burrow): it holds still while the sand heaves.
     if (updateBurrow(world, snake, dt)) continue;
     snake.growTimer += dt;
     if (snake.growTimer >= cfg.growEverySeconds) {
       snake.growTimer -= cfg.growEverySeconds;
-      if (snake.cells.length + snake.pendingGrow < cfg.maxLength) snake.pendingGrow++;
+      if (snake.cells.length + snake.pendingGrow < maxLength(world)) snake.pendingGrow++;
     }
-    // A firecracker's bang (or a smoke bomb) beats any behavior: it goes there, out of cover if it has
-    // to. The Mother Snake's last stand (boss phase 3) coils.
-    const target = snake.lure ?? BEHAVIORS[world.bossPhase === 3 ? 'coil' : cfg.behavior](world, snake);
+    // A steered snake goes where its pilot points. A firecracker's bang (or a smoke bomb) beats any
+    // behavior: it goes there, out of cover if it has to. The Mother Snake's last stand (boss phase 3) coils.
+    const target = snake.pilot !== null
+      ? pilotTarget(world, snake, inputs[snake.pilot] ?? NO_INPUT, dt)
+      : snake.lure ?? BEHAVIORS[world.bossPhase === 3 ? 'coil' : cfg.behavior](world, snake);
     advanceSnake(world, snake, dt, target.x, target.z, true, 'cover' in target && !!target.cover);
     updateGrowthSplit(world, snake, dt);
   }
@@ -287,20 +327,23 @@ export function updateWorld(world: World, input: PlayerInput, dt: number): void 
     if (world.severed[i].life <= 0) world.severed.splice(i, 1);
   }
 
-  resolveCollisions(world);
+  for (const p of world.players) if (onFoot(p)) collidePlayer(world, p);
+  for (const p of world.players) if (catchable(p) && world.status === 'playing') catchPlayer(world, p);
   if (world.status !== 'playing') return;
 
   const pickup = BALANCE.pellets.pickupRadius;
   for (let i = world.pellets.length - 1; i >= 0; i--) {
-    const p = world.pellets[i];
-    if (Math.hypot(cellToWorld(world.grid, p.x) - world.player.x, cellToWorld(world.grid, p.z) - world.player.z) < pickup) {
-      world.pellets.splice(i, 1);
-      world.pelletsCollected++;
-      world.xpGained += BALANCE.xp.perPellet;
-      if (world.level.pelletBoost) world.boosts.push(world.level.pelletBoost.seconds);
-      world.events.push({ type: 'pelletCollected' });
-      spawnPellet(world);
-    }
+    const pellet = world.pellets[i];
+    const by = world.players.find((p) => onFoot(p) && Math.hypot(cellToWorld(world.grid, pellet.x) - p.x, cellToWorld(world.grid, pellet.z) - p.z) < pickup);
+    if (!by) continue;
+    world.pellets.splice(i, 1);
+    world.pelletsCollected++;
+    by.pellets++;
+    world.xpGained += BALANCE.xp.perPellet;
+    if (world.level.pelletBoost) world.boosts.push(world.level.pelletBoost.seconds);
+    world.events.push({ type: 'pelletCollected', pid: by.id });
+    if (world.match) MODES[world.match.mode].pellet(world, by);
+    spawnPellet(world);
   }
   if (world.pellets.length < world.level.pelletCount) {
     world.pelletRespawn -= dt;
@@ -310,12 +353,13 @@ export function updateWorld(world: World, input: PlayerInput, dt: number): void 
     }
   }
 
-  updateItems(world, input, dt);
+  for (const p of world.players) if (onFoot(p)) updateItems(world, p, inputOf(p), dt);
+  spawnDrops(world, dt);
   updateProjectiles(world, dt);
   updateFirecrackers(world, dt);
   updateMongooses(world, dt);
   // Frozen lake: cracked ice gives way under a long snake; standing on it when it goes, you fall in.
-  if (updateIce(world, dt)) kill(world, 'fell', null);
+  for (const p of updateIce(world, dt)) if (world.status === 'playing') kill(world, p, 'fell', null);
   if (world.status !== 'playing') return;
   // Dark cave: the flashlight's battery, and the Mother Snake's phases.
   updateBoss(world, dt);
@@ -326,43 +370,50 @@ export function updateWorld(world: World, input: PlayerInput, dt: number): void 
     world.events.push({ type: 'stormWarning' });
   }
   for (let i = world.smokes.length - 1; i >= 0; i--) if ((world.smokes[i].time -= dt) <= 0) world.smokes.splice(i, 1);
-  pickUpRelics(world);
-  updateSwimming(world, dt);
+  for (const p of world.players) if (onFoot(p)) pickUpRelics(world, p);
+  for (const p of world.players) if (onFoot(p) && world.status === 'playing') updateSwimming(world, p, dt);
   if (world.status !== 'playing') return;
   for (let i = world.boosts.length - 1; i >= 0; i--) {
     world.boosts[i] -= dt;
     if (world.boosts[i] <= 0) world.boosts.splice(i, 1);
   }
 
+  if (world.match) {
+    MODES[world.match.mode].after(world, dt);
+    return;
+  }
   if (goalMet(world.level.goal, world)) {
     world.status = 'complete';
     world.events.push({ type: 'levelComplete' });
   }
 }
 
+/** How long a snake may grow: the level's cap, raised in multiplayer by the match. */
+const maxLength = (world: World): number => world.level.snake.maxLength + (world.match?.extraLength ?? 0);
+
 /** The first inventory slot holding a swim ring with time left, or -1. */
-function swimRingSlot(world: World): number {
-  return world.inventory.findIndex((h) => h !== null && h.item === 'swimRing' && h.uses > 0);
+function swimRingSlot(p: PlayerState): number {
+  return p.inventory.findIndex((h) => h !== null && h.item === 'swimRing' && h.uses > 0);
 }
 
 /**
  * While you swim, the swim ring's seconds drain. Run out in deep water and you drown (a life).
  * A spent ring is gone; with no ring left, the water pushes you back next update.
  */
-function updateSwimming(world: World, dt: number): void {
-  if (!world.player.swimming) return;
-  const slot = swimRingSlot(world);
+function updateSwimming(world: World, p: PlayerState, dt: number): void {
+  if (!p.swimming) return;
+  const slot = swimRingSlot(p);
   if (slot < 0) {
-    kill(world, 'drowned', null);
+    kill(world, p, 'drowned', null);
     return;
   }
-  const ring = world.inventory[slot];
+  const ring = p.inventory[slot];
   if (!ring) return;
   ring.uses = Math.max(0, ring.uses - dt);
   if (ring.uses <= 0) {
-    world.inventory[slot] = null;
-    world.events.push({ type: 'itemSpoiled', slot, item: 'swimRing' });
-    if (swimRingSlot(world) < 0) kill(world, 'drowned', null);
+    p.inventory[slot] = null;
+    world.events.push({ type: 'itemSpoiled', pid: p.id, slot, item: 'swimRing' });
+    if (swimRingSlot(p) < 0) kill(world, p, 'drowned', null);
   }
 }
 
@@ -370,13 +421,13 @@ function updateSwimming(world: World, dt: number): void {
  * Relics (Ruins): walk over one to pick it up; the last one opens the gate. The corn maze's map is
  * the same thing with a count of one: it opens the exit (and the HUD turns the minimap on).
  */
-function pickUpRelics(world: World): void {
+function pickUpRelics(world: World, p: PlayerState): void {
   const goal = world.level.goal;
   if (goal.kind !== 'relicsThenGate' && goal.kind !== 'mapThenExit') return;
   const needed = goal.kind === 'relicsThenGate' ? goal.relics : 1;
   for (let i = world.relics.length - 1; i >= 0; i--) {
     const c = world.relics[i];
-    if (Math.hypot(cellToWorld(world.grid, c.x) - world.player.x, cellToWorld(world.grid, c.z) - world.player.z) > BALANCE.arena.relicPickupRadius) continue;
+    if (Math.hypot(cellToWorld(world.grid, c.x) - p.x, cellToWorld(world.grid, c.z) - p.z) > BALANCE.arena.relicPickupRadius) continue;
     world.relics.splice(i, 1);
     world.relicsTaken.push(c);
     world.relicsFound++;

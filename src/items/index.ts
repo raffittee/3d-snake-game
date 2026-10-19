@@ -6,20 +6,22 @@ import { fireStone, throwFirecracker } from '../sim/projectiles';
 import { worldToCell } from '../sim/grid';
 import { releaseMongoose } from '../sim/mongoose';
 import { blocksSnake } from '../sim/tiles';
-import type { ItemId, World } from '../sim/types';
+import type { ItemId, PlayerState, World } from '../sim/types';
+import { provoke } from '../sim/hunt';
 
 /**
  * What an item does when used. Plain sim code: no three.js, no DOM. Returns false when the item
  * could not be used right now (then no use is spent).
  */
 export interface ItemDef {
-  use(world: World): boolean;
+  /** Player `p` uses it. */
+  use(world: World, p: PlayerState): boolean;
 }
 
 /** Fires a stone along the crosshair. A head hit stuns the snake (sim/projectiles.ts). A miss still spends the shot. */
 const slingshot: ItemDef = {
-  use: (world) => {
-    fireStone(world);
+  use: (world, p) => {
+    fireStone(world, p);
     return true;
   },
 };
@@ -29,12 +31,14 @@ const slingshot: ItemDef = {
  * it splits it (sim/cut.ts); the head and a snake at its floor bounce it off. Every swing costs a cut.
  */
 const machete: ItemDef = {
-  use: (world) => {
-    const hit = probeView(world, BALANCE.items.defs.machete.reach, 0.05);
+  use: (world, p) => {
+    const hit = probeView(world, p, BALANCE.items.defs.machete.reach, 0.05);
     let result: 'cut' | 'bounce' | 'miss' = 'miss';
-    if (hit?.kind === 'body') result = cutSnake(world, hit.snake, hit.seg, macheteCutSize(world)) === 'bounce' ? 'bounce' : 'cut';
-    else if (hit?.kind === 'head' || hit?.kind === 'solid' || hit?.kind === 'wall') result = 'bounce';
-    world.events.push({ type: 'macheteSwing', result });
+    if (hit?.kind === 'body') {
+      provoke(hit.snake, p.id);
+      result = cutSnake(world, hit.snake, hit.seg, macheteCutSize(world)) === 'bounce' ? 'bounce' : 'cut';
+    } else if (hit?.kind === 'head' || hit?.kind === 'solid' || hit?.kind === 'wall') result = 'bounce';
+    world.events.push({ type: 'macheteSwing', pid: p.id, result });
     return true;
   },
 };
@@ -52,8 +56,8 @@ const swimRing: ItemDef = {
  * within earshot heads for the noise for a few seconds (sim/projectiles.ts).
  */
 const firecracker: ItemDef = {
-  use: (world) => {
-    throwFirecracker(world);
+  use: (world, p) => {
+    throwFirecracker(world, p);
     return true;
   },
 };
@@ -63,9 +67,9 @@ const firecracker: ItemDef = {
  * a spot well away from you for a few seconds (the same lure a firecracker uses, aimed elsewhere).
  */
 const smokeBomb: ItemDef = {
-  use: (world) => {
+  use: (world, player) => {
     const cfg = BALANCE.items.defs.smokeBomb;
-    const { grid, rng, player } = world;
+    const { grid, rng } = world;
     const n = grid.size;
     const px = worldToCell(grid, player.x);
     const pz = worldToCell(grid, player.z);
@@ -84,45 +88,44 @@ const smokeBomb: ItemDef = {
       snake.striking = false;
     }
     world.smokes.push({ x: player.x, z: player.z, time: cfg.seconds });
-    world.events.push({ type: 'smokeBomb', x: player.x, z: player.z });
+    world.events.push({ type: 'smokeBomb', pid: player.id, x: player.x, z: player.z });
     return true;
   },
 };
 
 /** Drunk on the spot: stamina fills up and sprinting costs nothing for a few seconds (sim/player.ts). */
 const energyDrink: ItemDef = {
-  use: (world) => {
-    const p = world.player;
+  use: (world, p) => {
     p.energy = BALANCE.items.defs.energyDrink.seconds;
     p.stamina = 1;
     p.tired = false;
-    world.events.push({ type: 'energyDrink' });
+    world.events.push({ type: 'energyDrink', pid: p.id });
     return true;
   },
 };
 
 /** Let the mongoose out of its cage: it runs to the nearest snake and pins it in a fight (sim/mongoose.ts). */
 const mongoose: ItemDef = {
-  use: (world) => {
-    releaseMongoose(world);
+  use: (world, p) => {
+    releaseMongoose(world, p);
     return true;
   },
 };
 
 /** Strapped onto your boots: no sliding on ice for a while (sim/player.ts). */
 const iceCleats: ItemDef = {
-  use: (world) => {
-    world.player.cleats = BALANCE.items.defs.iceCleats.seconds;
-    world.events.push({ type: 'cleatsOn' });
+  use: (world, p) => {
+    p.cleats = BALANCE.items.defs.iceCleats.seconds;
+    world.events.push({ type: 'cleatsOn', pid: p.id });
     return true;
   },
 };
 
 /** Snapped into the flashlight: more light (Dark cave). */
 const battery: ItemDef = {
-  use: (world) => {
-    world.battery += BALANCE.items.defs.battery.seconds;
-    world.events.push({ type: 'batteryIn' });
+  use: (world, p) => {
+    p.battery += BALANCE.items.defs.battery.seconds;
+    world.events.push({ type: 'batteryIn', pid: p.id });
     return true;
   },
 };

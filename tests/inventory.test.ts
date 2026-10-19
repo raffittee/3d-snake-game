@@ -28,9 +28,9 @@ const events = (w: World, type: string) => drainEvents(w).filter((e) => e.type =
 describe('inventory', () => {
   it('starts with empty slots and the first one selected', () => {
     const w = world();
-    expect(w.inventory).toHaveLength(BALANCE.items.slots);
-    expect(w.inventory.every((s) => s === null)).toBe(true);
-    expect(w.selectedSlot).toBe(0);
+    expect(w.player.inventory).toHaveLength(BALANCE.items.slots);
+    expect(w.player.inventory.every((s) => s === null)).toBe(true);
+    expect(w.player.selectedSlot).toBe(0);
     expect(w.drops).toHaveLength(0);
   });
 
@@ -39,7 +39,7 @@ describe('inventory', () => {
     dropUnderPlayer(w, 'gold');
     updateWorld(w, NO_INPUT, 0.01);
     expect(w.drops).toHaveLength(0);
-    const held = w.inventory[0];
+    const held = w.player.inventory[0];
     expect(held?.item).toBe('slingshot');
     expect(held?.tier).toBe('gold');
     expect(held?.uses).toBe(Math.round(slingshot.uses * BALANCE.items.tierScale.gold));
@@ -48,7 +48,7 @@ describe('inventory', () => {
 
     dropUnderPlayer(w, 'white');
     updateWorld(w, NO_INPUT, 0.01);
-    expect(w.inventory[1]?.uses).toBe(slingshot.uses);
+    expect(w.player.inventory[1]?.uses).toBe(slingshot.uses);
   });
 
   it('leaves a drop on the ground when both slots are full', () => {
@@ -59,7 +59,7 @@ describe('inventory', () => {
     updateWorld(w, NO_INPUT, 0.01);
     dropUnderPlayer(w);
     updateWorld(w, NO_INPUT, 0.01);
-    expect(w.inventory.every((s) => s !== null)).toBe(true);
+    expect(w.player.inventory.every((s) => s !== null)).toBe(true);
     expect(w.drops).toHaveLength(1);
   });
 
@@ -69,9 +69,9 @@ describe('inventory', () => {
     updateWorld(w, NO_INPUT, 0.01);
     drainEvents(w);
     for (let t = 0; t < slingshot.spoilSeconds - 1; t += 0.5) updateWorld(w, NO_INPUT, 0.5);
-    expect(w.inventory[0]).not.toBeNull();
+    expect(w.player.inventory[0]).not.toBeNull();
     for (let i = 0; i < 4; i++) updateWorld(w, NO_INPUT, 0.5);
-    expect(w.inventory[0]).toBeNull();
+    expect(w.player.inventory[0]).toBeNull();
     expect(events(w, 'itemSpoiled')).toHaveLength(1);
   });
 
@@ -81,10 +81,10 @@ describe('inventory', () => {
     updateWorld(w, NO_INPUT, 0.01);
     drainEvents(w);
     updateWorld(w, USE, 0.01);
-    expect(w.inventory[0]?.uses).toBe(slingshot.uses - 1);
+    expect(w.player.inventory[0]?.uses).toBe(slingshot.uses - 1);
     expect(events(w, 'itemUsed')).toHaveLength(1);
     for (let i = 1; i < slingshot.uses; i++) updateWorld(w, USE, 0.01);
-    expect(w.inventory[0]).toBeNull();
+    expect(w.player.inventory[0]).toBeNull();
   });
 
   it('using an empty slot does nothing', () => {
@@ -96,13 +96,13 @@ describe('inventory', () => {
   it('selects a slot directly or cycles through them, wrapping around', () => {
     const w = world();
     updateWorld(w, input({ selectSlot: 1 }), 0.01);
-    expect(w.selectedSlot).toBe(1);
+    expect(w.player.selectedSlot).toBe(1);
     updateWorld(w, input({ cycleSlot: 1 }), 0.01);
-    expect(w.selectedSlot).toBe(0);
+    expect(w.player.selectedSlot).toBe(0);
     updateWorld(w, input({ cycleSlot: -1 }), 0.01);
-    expect(w.selectedSlot).toBe(BALANCE.items.slots - 1);
+    expect(w.player.selectedSlot).toBe(BALANCE.items.slots - 1);
     updateWorld(w, input({ selectSlot: 7 }), 0.01);
-    expect(w.selectedSlot).toBe(BALANCE.items.slots - 1);
+    expect(w.player.selectedSlot).toBe(BALANCE.items.slots - 1);
   });
 
   it('keeps your items when you lose a life', () => {
@@ -113,8 +113,8 @@ describe('inventory', () => {
     w.player.x = head.x;
     w.player.z = head.z;
     updateWorld(w, NO_INPUT, 0.01);
-    expect(w.lives).toBe(BALANCE.lives.perLevel - 1);
-    expect(w.inventory[0]?.item).toBe('slingshot');
+    expect(w.player.lives).toBe(BALANCE.lives.perLevel - 1);
+    expect(w.player.inventory[0]?.item).toBe('slingshot');
   });
 });
 

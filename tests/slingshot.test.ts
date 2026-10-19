@@ -30,8 +30,8 @@ function setup(): World {
   computeSegmentPositions(w.snakes[0], w.grid, 0);
   w.player.x = cellToWorld(w.grid, 24);
   w.player.z = cellToWorld(w.grid, 30);
-  w.inventory[0] = makeHeld('slingshot', 'white');
-  w.selectedSlot = 0;
+  w.player.inventory[0] = makeHeld('slingshot', 'white');
+  w.player.selectedSlot = 0;
   return w;
 }
 
@@ -59,7 +59,7 @@ describe('slingshot', () => {
     const w = setup();
     aimAt(w, w.player.x, w.player.z - 10);
     updateWorld(w, USE, 0.001);
-    expect(w.inventory[0]?.uses).toBe(sling.uses - 1);
+    expect(w.player.inventory[0]?.uses).toBe(sling.uses - 1);
     expect(w.projectiles).toHaveLength(1);
     const s = w.projectiles[0];
     expect(s.y).toBeCloseTo(BALANCE.player.eyeHeight, 1);

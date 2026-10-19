@@ -146,8 +146,8 @@ describe('energy drink', () => {
     putPlayer(w, { x: 10, z: 30 });
     w.player.yaw = -Math.PI / 2;
     w.player.stamina = 0.1;
-    w.inventory[0] = makeHeld('energyDrink', 'white');
-    w.selectedSlot = 0;
+    w.player.inventory[0] = makeHeld('energyDrink', 'white');
+    w.player.selectedSlot = 0;
     updateWorld(w, { ...NO_INPUT, useItem: true }, DT);
     expect(drainEvents(w).some((e) => e.type === 'energyDrink')).toBe(true);
     expect(w.player.stamina).toBe(1);

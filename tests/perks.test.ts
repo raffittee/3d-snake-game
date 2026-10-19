@@ -72,23 +72,23 @@ describe('perk effects', () => {
     const plain = createWorld(level01, 1);
     const lungs = createWorld(level01, 1, ['bigLungs']);
     const run = { ...NO_INPUT, forward: 1, sprint: true };
-    updatePlayer(plain, run, 1);
-    updatePlayer(lungs, run, 1);
+    updatePlayer(plain, plain.player, run, 1);
+    updatePlayer(lungs, lungs.player, run, 1);
     expect(1 - lungs.player.stamina).toBeCloseTo((1 - plain.player.stamina) / 1.3, 5);
   });
 
   it('Packrat: a third inventory slot', () => {
-    expect(createWorld(level01, 1).inventory).toHaveLength(2);
-    expect(createWorld(level01, 1, ['packrat']).inventory).toHaveLength(3);
+    expect(createWorld(level01, 1).player.inventory).toHaveLength(2);
+    expect(createWorld(level01, 1, ['packrat']).player.inventory).toHaveLength(3);
   });
 
   it('Preserver: items spoil 50% slower', () => {
     const w = createWorld(level01, 1, ['preserver']);
     w.invulnerable = true;
-    w.inventory[0] = makeHeld('slingshot', 'white');
-    const before = w.inventory[0].spoilLeft;
+    w.player.inventory[0] = makeHeld('slingshot', 'white');
+    const before = w.player.inventory[0].spoilLeft;
     updateWorld(w, NO_INPUT, 1);
-    expect(before - (w.inventory[0]?.spoilLeft ?? 0)).toBeCloseTo(0.5, 5);
+    expect(before - (w.player.inventory[0]?.spoilLeft ?? 0)).toBeCloseTo(0.5, 5);
   });
 
   it('Spring legs: one more tail segment is low enough to jump', () => {
@@ -114,7 +114,7 @@ describe('perk effects', () => {
     w.player.pitch = -0.35;
     w.invulnerable = true;
     w.pillars.fill(0);
-    w.inventory[0] = makeHeld('machete', 'white');
+    w.player.inventory[0] = makeHeld('machete', 'white');
     updateWorld(w, { ...NO_INPUT, useItem: true }, 0.01);
     // 16 - 2 cut out: a front of 6 and a back of 8.
     expect(w.snakes.map((q) => q.cells.length).sort((a, b) => a - b)).toEqual([6, 8]);
@@ -134,11 +134,11 @@ describe('perk effects', () => {
       updateWorld(w, NO_INPUT, 0.01);
     };
     catchMe();
-    expect(w.lives).toBe(BALANCE.lives.perLevel);
-    expect(w.secondWindUsed).toBe(true);
-    expect(w.graceTimer).toBeGreaterThan(0);
-    w.graceTimer = 0;
+    expect(w.player.lives).toBe(BALANCE.lives.perLevel);
+    expect(w.player.secondWindUsed).toBe(true);
+    expect(w.player.graceTimer).toBeGreaterThan(0);
+    w.player.graceTimer = 0;
     catchMe();
-    expect(w.lives).toBe(BALANCE.lives.perLevel - 1);
+    expect(w.player.lives).toBe(BALANCE.lives.perLevel - 1);
   });
 });
