@@ -29,7 +29,12 @@ export interface Palette {
   doorShut: string;
   doorOpen: string;
   closet: string;
+  /** Multiplayer player colors, by player id. */
+  players: string[];
 }
+
+/** The color for player `id` (CSS variable, for DOM styles). */
+export const playerColorVar = (id: number): string => `var(--player-${id % 4})`;
 
 export function readPalette(): Palette {
   const css = (name: string): string => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -60,5 +65,6 @@ export function readPalette(): Palette {
     doorShut: css('--map-door-shut'),
     doorOpen: css('--map-door-open'),
     closet: css('--map-closet'),
+    players: [0, 1, 2, 3].map((i) => css(`--player-${i}`)),
   };
 }

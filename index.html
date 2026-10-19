@@ -44,6 +44,12 @@
     </div>
   </div>
 </div>
+<div id="mpHud" hidden>
+  <div class="mp-clock" id="mpClock"><span class="lbl" id="mpMode">Classic</span><span class="val" id="mpTimer">5:00</span><span class="mp-goal" id="mpGoal"></span></div>
+  <ul class="mp-players" id="mpPlayers" aria-label="Players"></ul>
+  <div class="mp-status" id="mpStatus" hidden></div>
+  <div class="mp-talk" id="mpTalk" hidden>Talking</div>
+</div>
 <div id="cross" hidden></div>
 <div id="keenArrow" hidden aria-hidden="true"></div>
 <div id="prompt" hidden><kbd>R</kbd> <span id="promptText"></span></div>
@@ -74,6 +80,7 @@
     </dl>
     <div class="row">
       <button class="btn" id="startBtn">Start running</button>
+      <button class="btn ghost" id="mpBtn">Play with friends</button>
       <button class="btn ghost" id="settingsFromStart">Settings</button>
     </div>
     <p class="best">Best score <span id="bestStart">0</span></p>
@@ -90,6 +97,67 @@
       <label class="setting" for="set-quality"><span class="lbl">Graphics quality</span><select id="set-quality"><option value="high">High: shadows, sky lighting</option><option value="low">Low: faster</option></select></label>
     </div>
     <div class="row"><button class="btn" id="settingsBack">Back</button></div>
+  </section>
+
+  <section class="card" id="panelMp" hidden>
+    <p class="eyebrow">Friends only · 2 to 4 players</p>
+    <h2>Play with friends</h2>
+    <label class="setting" for="mpName"><span class="lbl">Your name</span><input class="text" id="mpName" maxlength="16" autocomplete="nickname" spellcheck="false"></label>
+    <div class="row"><button class="btn" id="mpCreate">Create a room</button></div>
+    <div class="join-row">
+      <label class="setting" for="mpCode"><span class="lbl">Room code</span><input class="text code-input" id="mpCode" maxlength="8" autocomplete="off" spellcheck="false" placeholder="K7Q2XP"></label>
+      <button class="btn ghost" id="mpJoin">Join</button>
+    </div>
+    <p class="note" id="mpError" role="alert"></p>
+    <div class="row"><button class="btn ghost" id="mpBack">Back</button></div>
+  </section>
+
+  <section class="card wide" id="panelLobby" hidden>
+    <p class="eyebrow">Room code · share it with your friends</p>
+    <div class="code-row"><h2 class="room-code" id="lobbyCode">------</h2><button class="btn ghost small" id="lobbyCopy">Copy invite link</button></div>
+    <div class="lobby">
+      <div class="lobby-col">
+        <span class="lbl">Players</span>
+        <ul class="members" id="lobbyMembers"></ul>
+        <label class="setting" for="talkMode"><span class="lbl">Voice</span><output id="micState"></output>
+          <select id="talkMode"><option value="ptt">Push to talk (hold V)</option><option value="open">Open mic</option></select></label>
+      </div>
+      <div class="lobby-col settings" id="lobbySettings">
+        <label class="setting" for="ls-mode"><span class="lbl">Mode</span><select id="ls-mode"></select></label>
+        <p class="note mode-note" id="lsModeNote"></p>
+        <label class="setting" for="ls-terrain"><span class="lbl">Terrain</span><select id="ls-terrain"></select></label>
+        <label class="setting" for="ls-mapSize"><span class="lbl">Map size</span><select id="ls-mapSize"></select></label>
+        <label class="setting" for="ls-snakeSpeed"><span class="lbl">Snake speed</span><select id="ls-snakeSpeed"></select></label>
+        <label class="setting" for="ls-rounds"><span class="lbl">Rounds</span><select id="ls-rounds"></select></label>
+        <label class="setting" for="ls-roundMinutes"><span class="lbl">Round length</span><select id="ls-roundMinutes"></select></label>
+        <label class="setting" for="ls-items"><span class="lbl">Items</span><select id="ls-items"></select></label>
+        <label class="setting" for="ls-proximityVoice"><span class="lbl">Proximity voice</span><select id="ls-proximityVoice"></select></label>
+      </div>
+    </div>
+    <p class="note" id="lobbyNote"></p>
+    <div class="row"><button class="btn" id="lobbyStart">Start match</button><button class="btn ghost" id="lobbyLeave">Leave</button><button class="btn ghost" id="settingsFromLobby">Settings</button></div>
+  </section>
+
+  <section class="card" id="panelRound" hidden>
+    <p class="eyebrow" id="roundEyebrow">Round 1 of 3</p>
+    <h2 id="roundTitle">Round over</h2>
+    <p class="lede" id="roundReason"></p>
+    <ol class="standings" id="roundStandings"></ol>
+    <p class="best" id="roundNext"></p>
+    <div class="row"><button class="btn" id="roundLobby" hidden>Back to the lobby</button><button class="btn ghost" id="roundLeave">Leave</button></div>
+  </section>
+
+  <section class="card" id="panelMpPause" hidden>
+    <p class="eyebrow">The match goes on</p>
+    <h2>Paused</h2>
+    <p class="lede">You are still in the round: the snake does not wait. Voice stays on.</p>
+    <span class="lbl">Voices</span>
+    <ul class="members" id="pauseMembers"></ul>
+    <div class="row">
+      <button class="btn" id="mpResumeBtn">Back in</button>
+      <button class="btn ghost" id="settingsFromMpPause">Settings</button>
+      <button class="btn ghost" id="mpLeaveBtn">Leave match</button>
+    </div>
   </section>
 
   <section class="card" id="panelPause" hidden>

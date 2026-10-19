@@ -4,7 +4,8 @@ import type { DeathCause } from '../sim/types';
 import { $ } from './dom';
 import { formatTime } from './hud';
 
-export type PanelName = 'start' | 'pause' | 'dead' | 'complete' | 'settings' | 'perk' | null;
+/** `mp`: create or join a room. `lobby`, `round` (scoreboard) and `mpPause`: multiplayer. */
+export type PanelName = 'start' | 'pause' | 'dead' | 'complete' | 'settings' | 'perk' | 'mp' | 'lobby' | 'round' | 'mpPause' | null;
 
 export interface CompleteSummary {
   levelNumber: number;
@@ -45,8 +46,12 @@ export class Panels {
     complete: $('panelComplete'),
     settings: $('panelSettings'),
     perk: $('panelPerk'),
+    mp: $('panelMp'),
+    lobby: $('panelLobby'),
+    round: $('panelRound'),
+    mpPause: $('panelMpPause'),
   };
-  private readonly focusId = { start: 'startBtn', pause: 'resumeBtn', dead: 'againBtn', complete: 'completeNextBtn', settings: 'settingsBack', perk: 'perkChoices' } as const;
+  private readonly focusId = { start: 'startBtn', pause: 'resumeBtn', dead: 'againBtn', complete: 'completeNextBtn', settings: 'settingsBack', perk: 'perkChoices', mp: 'mpCreate', lobby: 'lobbyStart', round: 'roundLeave', mpPause: 'mpResumeBtn' } as const;
   private perkHandler: (id: PerkId) => void = () => undefined;
 
   constructor(private readonly touch: boolean) {

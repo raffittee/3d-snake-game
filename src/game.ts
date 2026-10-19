@@ -14,7 +14,9 @@ import type { PerkId } from './sim/perks';
 import { hiddenInGrass } from './sim/tiles';
 import { stormAt } from './sim/weather';
 import { createWorld, dangerLevel, drainEvents, gapToSnake, nearestSnake, scoreOf, updateDemo, updateWorld } from './sim/world';
-import type { World } from './sim/types';
+import type { SimEvent, World } from './sim/types';
+import type { Multiplayer } from './mp';
+import type { PanelName } from './ui/panels';
 import type { Quality, Settings } from './settings';
 import { loadBest, loadSettings, saveBest, saveSettings } from './storage';
 import { SettingsForm } from './ui/settings';
@@ -22,8 +24,11 @@ import { $ } from './ui/dom';
 import { Hud } from './ui/hud';
 import { Panels } from './ui/panels';
 
-/** `complete`: the level-complete card. `perk`: picking a perk between levels. */
-export type GameState = 'menu' | 'play' | 'paused' | 'dead' | 'complete' | 'perk';
+/** `complete`: the level-complete card. `perk`: picking a perk between levels. `mp`: multiplayer (src/mp.ts runs it). */
+export type GameState = 'menu' | 'play' | 'paused' | 'dead' | 'complete' | 'perk' | 'mp';
+
+/** Events that only matter to the player they are about (a sound, a flash): others' are skipped in multiplayer. */
+const PERSONAL = new Set<SimEvent['type']>(['pelletCollected', 'died', 'lifeLost', 'secondWind', 'jumped', 'itemPickedUp', 'itemUsed', 'itemSpoiled', 'shotFired', 'firecrackerThrown', 'energyDrink', 'mongooseReleased', 'cleatsOn', 'batteryIn', 'batteryDead', 'macheteSwing', 'shotHit', 'smokeBomb']);
 
 export interface GameOptions {
   seed?: number;
@@ -64,6 +69,10 @@ export class Game {
   private perkRng: Rng;
   /** Frames drawn so far. Tests use it to know the loop is alive. */
   frames = 0;
+  /** Multiplayer: the lobby and matches (src/mp.ts). Loaded on first use, so single player never downloads the network code. */
+  mp: Multiplayer | null = null;
+  /** Which card the Settings card's Back button returns to. */
+  private settingsReturn: PanelName = 'start';
 
   constructor(private readonly options: GameOptions) {
     const palette = readPalette();
@@ -71,7 +80,7 @@ export class Game {
     this.renderer = new GameRenderer(this.view, options.forceQuality ?? settings.quality, palette);
     this.hud = new Hud(palette);
     this.input = new Input(this.view, {
-      onPause: () => this.pause(),
+      onPause: () => (this.state === 'mp' ? this.mp?.pause() : this.pause()),
       onMute: () => this.audio.toggleMute(),
       onEnter: () => {
         if (this.state === 'menu' && this.panels.startVisible) this.start();
@@ -128,10 +137,37 @@ export class Game {
     this.panels.on('completeMenuBtn', () => this.toMenu());
     this.panels.on('pauseBtn', () => this.pause());
     this.panels.onPerk((id) => this.pickPerk(id));
-    this.panels.on('settingsFromStart', () => this.panels.show('settings'));
-    this.panels.on('settingsFromPause', () => this.panels.show('settings'));
-    // Back returns to whichever card opened it: the pause card mid-run, otherwise the title card.
-    this.panels.on('settingsBack', () => this.panels.show(this.state === 'paused' ? 'pause' : 'start'));
+    this.panels.on('settingsFromStart', () => this.openSettings('start'));
+    this.panels.on('settingsFromPause', () => this.openSettings('pause'));
+    // Back returns to whichever card opened it (the title card, the pause card, the lobby...).
+    this.panels.on('settingsBack', () => this.panels.show(this.settingsReturn));
+    this.panels.on('mpBtn', () => void this.openMultiplayer());
+  }
+
+  /** "Play with friends": load the multiplayer code (first time only) and show its card. */
+  async openMultiplayer(): Promise<Multiplayer> {
+    if (!this.mp) {
+      const { Multiplayer } = await import('./mp');
+      this.mp ??= new Multiplayer({
+        renderer: this.renderer,
+        hud: this.hud,
+        panels: this.panels,
+        audio: this.audio,
+        input: this.input,
+        cam: this.cam,
+        events: (events, world, me) => this.playEvents(events, world, me),
+        exit: () => this.toMenu(),
+        settings: (back) => this.openSettings(back),
+      });
+    }
+    this.state = 'mp';
+    this.mp.open();
+    return this.mp;
+  }
+
+  private openSettings(back: PanelName): void {
+    this.settingsReturn = back;
+    this.panels.show('settings');
   }
 
   private applySettings(s: Settings): void {
@@ -193,6 +229,7 @@ export class Game {
   }
 
   toMenu(): void {
+    this.cam.follow = undefined;
     this.run = newRun(this.run.seed);
     this.run.levelIndex = this.firstLevel();
     this.state = 'menu';
@@ -240,7 +277,7 @@ export class Game {
       score: levelScore,
       runScore: this.run.score,
       pellets: this.world.pelletsCollected,
-      livesLeft: this.world.lives,
+      livesLeft: this.world.player.lives,
       picks: pendingPicks(this.run),
       last,
       isBest,
@@ -311,17 +348,19 @@ export class Game {
     const dt = Math.min(0.05, (now - this.last) / 1000);
     this.trackFrame(now, now - this.last);
     this.last = now;
-    this.step(dt);
     this.frames++;
+    // Multiplayer draws its own frame while a round is on.
+    if (this.state === 'mp' && this.mp?.frame(dt, now)) return;
+    this.step(dt);
     const w = this.world;
-    this.cam.mode = this.state === 'menu' ? 'menu' : this.state === 'dead' ? 'dead' : 'play';
+    this.cam.mode = this.state === 'menu' || this.state === 'mp' ? 'menu' : this.state === 'dead' ? 'dead' : 'play';
     this.cam.danger = this.danger;
     if (this.state === 'play' || this.state === 'paused') {
       this.cam.yaw = w.player.yaw;
       this.cam.pitch = w.player.pitch;
     }
     this.renderer.render(w, this.cam, dt, now);
-    if (this.state !== 'menu') {
+    if (this.state !== 'menu' && this.state !== 'mp') {
       this.hud.drawMap(w);
       this.hud.update(w, this.danger, this.state === 'dead', this.finalScore, this.hudRun(w));
     }
@@ -357,11 +396,12 @@ export class Game {
           this.grassStepT = w.player.sprinting ? 0.34 : 0.5;
         }
       }
-      this.danger = dangerLevel(gapToSnake(w));
-      this.handleEvents();
+      this.danger = dangerLevel(gapToSnake(w, w.player));
+      this.playEvents(drainEvents(w), w, w.player.id);
       if (w.status === 'dead') this.die();
       else if (w.status === 'complete') this.complete();
-    } else if (this.state === 'menu') {
+    } else if (this.state === 'menu' || this.state === 'mp') {
+      // The title card, and the multiplayer cards around a match: the demo snake wanders.
       this.cam.menuT += dt;
       this.wanderT -= dt;
       const head = w.snakes[0]?.cells[0] ?? { x: -1, z: -1 };
@@ -378,20 +418,26 @@ export class Game {
     this.audio.setWind(this.state === 'play' ? stormAt(w.level, w.elapsed) : 0);
   }
 
-  private handleEvents(): void {
-    for (const e of drainEvents(this.world)) {
+  /**
+   * Sounds and HUD flashes for what happened. `me`: your player (in multiplayer, events about other
+   * players' items and lives are theirs, not yours; positional sounds play for everyone).
+   */
+  private playEvents(events: SimEvent[], world: World, me: number): void {
+    const mine = (e: SimEvent): boolean => !('pid' in e) || e.pid === me || !PERSONAL.has(e.type);
+    for (const e of events) {
+      if (!mine(e)) continue;
       if (e.type === 'pelletCollected') this.audio.pellet();
       else if (e.type === 'snakeAtePellet') this.audio.gulp();
       // In tall grass you can't see it: you hear it rustle, from its side.
       else if (e.type === 'snakeStep') {
-        if (e.hidden) this.audio.rustle(e.distance, this.panOf(e.x, e.z));
+        if (e.hidden) this.audio.rustle(this.distanceTo(e.x, e.z, world), this.panOf(e.x, e.z, world));
         // In the dark you track it by sound: its steps carry further there.
-        else this.audio.step(e.distance, this.panOf(e.x, e.z), this.world.level.flashlight ? 30 : 16);
+        else this.audio.step(this.distanceTo(e.x, e.z, world), this.panOf(e.x, e.z, world), world.level.flashlight ? 30 : 16);
       } else if (e.type === 'firecrackerThrown') this.audio.firecrackerThrown();
-      else if (e.type === 'firecrackerLanded') this.audio.fuseHiss(this.distanceTo(e.x, e.z), this.panOf(e.x, e.z));
+      else if (e.type === 'firecrackerLanded') this.audio.fuseHiss(this.distanceTo(e.x, e.z, world), this.panOf(e.x, e.z, world));
       else if (e.type === 'firecrackerBang') {
         this.renderer.bang(e.x, e.z);
-        this.audio.firecrackerBang(this.distanceTo(e.x, e.z), this.panOf(e.x, e.z));
+        this.audio.firecrackerBang(this.distanceTo(e.x, e.z, world), this.panOf(e.x, e.z, world));
       }
       else if (e.type === 'jumped') this.audio.jump();
       else if (e.type === 'itemSpawned') this.audio.itemSpawned();
@@ -403,27 +449,27 @@ export class Game {
       else if (e.type === 'macheteSwing') this.audio.macheteSwing(e.result);
       else if (e.type === 'snakeCut' && e.result !== 'bounce') this.renderer.spray(e.x, e.z);
       else if (e.type === 'snakeSplitWarning') this.audio.splitWarning();
-      else if (e.type === 'wallSmashed') this.audio.wallSmashed(Math.hypot(e.x - this.world.player.x, e.z - this.world.player.z));
-      else if (e.type === 'relicFound' && this.world.level.goal.kind === 'relicsThenGate' && this.world.level.goal.relic === 'lantern') this.audio.lanternLit();
+      else if (e.type === 'wallSmashed') this.audio.wallSmashed(this.distanceTo(e.x, e.z, world));
+      else if (e.type === 'relicFound' && world.level.goal.kind === 'relicsThenGate' && world.level.goal.relic === 'lantern') this.audio.lanternLit();
       else if (e.type === 'relicFound' || e.type === 'mapFound') this.audio.relicFound();
       else if (e.type === 'energyDrink') this.audio.energyDrink();
       else if (e.type === 'stormWarning') this.audio.stormWarning();
-      else if (e.type === 'iceCracking') this.audio.iceCracking(this.distanceTo(e.x, e.z), this.panOf(e.x, e.z));
-      else if (e.type === 'iceBroke') this.audio.iceBroke(this.distanceTo(e.x, e.z), this.panOf(e.x, e.z));
+      else if (e.type === 'iceCracking') this.audio.iceCracking(this.distanceTo(e.x, e.z, world), this.panOf(e.x, e.z, world));
+      else if (e.type === 'iceBroke') this.audio.iceBroke(this.distanceTo(e.x, e.z, world), this.panOf(e.x, e.z, world));
       else if (e.type === 'cleatsOn') this.audio.cleatsOn();
       else if (e.type === 'bossPhase') this.audio.bossRoar();
       else if (e.type === 'batteryIn') this.audio.batteryIn();
       else if (e.type === 'batteryDead') this.audio.batteryDead();
       else if (e.type === 'doorOpened') this.audio.doorOpened();
       else if (e.type === 'doorShut') this.audio.doorShut();
-      else if (e.type === 'doorBash') this.audio.doorBash(this.distanceTo(e.x, e.z), this.panOf(e.x, e.z));
-      else if (e.type === 'doorBroken') this.audio.doorBroken(this.distanceTo(e.x, e.z), this.panOf(e.x, e.z));
-      else if (e.type === 'snakeNoticed') this.audio.snakeNoticed(this.distanceTo(e.x, e.z), this.panOf(e.x, e.z));
+      else if (e.type === 'doorBash') this.audio.doorBash(this.distanceTo(e.x, e.z, world), this.panOf(e.x, e.z, world));
+      else if (e.type === 'doorBroken') this.audio.doorBroken(this.distanceTo(e.x, e.z, world), this.panOf(e.x, e.z, world));
+      else if (e.type === 'snakeNoticed') this.audio.snakeNoticed(this.distanceTo(e.x, e.z, world), this.panOf(e.x, e.z, world));
       else if (e.type === 'snakeDefeated') this.audio.gateOpened();
-      else if (e.type === 'snakeBurrowed' || e.type === 'snakeSurfaced') this.audio.sandBurst(this.distanceTo(e.x, e.z), this.panOf(e.x, e.z));
-      else if (e.type === 'snakeRising') this.audio.sandRumble(this.distanceTo(e.x, e.z), this.panOf(e.x, e.z));
+      else if (e.type === 'snakeBurrowed' || e.type === 'snakeSurfaced') this.audio.sandBurst(this.distanceTo(e.x, e.z, world), this.panOf(e.x, e.z, world));
+      else if (e.type === 'snakeRising') this.audio.sandRumble(this.distanceTo(e.x, e.z, world), this.panOf(e.x, e.z, world));
       else if (e.type === 'mongooseReleased') this.audio.mongooseReleased();
-      else if (e.type === 'mongooseFight') this.audio.mongooseFight(this.distanceTo(e.x, e.z), this.panOf(e.x, e.z));
+      else if (e.type === 'mongooseFight') this.audio.mongooseFight(this.distanceTo(e.x, e.z, world), this.panOf(e.x, e.z, world));
       else if (e.type === 'smokeBomb') {
         this.renderer.smokeCloud(e.x, e.z, BALANCE.items.defs.smokeBomb.seconds);
         this.audio.smokeBomb();
@@ -435,16 +481,28 @@ export class Game {
         this.audio.lifeLost();
         this.hud.flashLifeLost();
       }
+      // Multiplayer.
+      else if (e.type === 'playerDowned' || e.type === 'playerInfected' || e.type === 'playerOut') {
+        if (e.pid === me) {
+          this.audio.lifeLost();
+          this.hud.flashLifeLost();
+        } else this.audio.splitWarning();
+      } else if (e.type === 'playerRevived') this.audio.itemPickedUp();
+      else if (e.type === 'eggPassed') this.audio.relicFound();
+      else if (e.type === 'nestFilled') this.audio.lanternLit();
+      else if (e.type === 'playerEscaped') this.audio.gateOpened();
+      else if (e.type === 'snakeWhip') this.audio.wallSmashed(this.distanceTo(e.x, e.z, world));
+      else if (e.type === 'snakeDash' && e.pid === me) this.audio.sandBurst(0, 0);
     }
   }
 
-  private distanceTo(x: number, z: number): number {
-    return Math.hypot(x - this.world.player.x, z - this.world.player.z);
+  private distanceTo(x: number, z: number, world: World): number {
+    return Math.hypot(x - world.player.x, z - world.player.z);
   }
 
   /** Stereo pan of a sound at (x, z): -1 hard left, 1 hard right of where you face. */
-  private panOf(x: number, z: number): number {
-    const p = this.world.player;
+  private panOf(x: number, z: number, world: World): number {
+    const p = world.player;
     const d = Math.hypot(x - p.x, z - p.z);
     if (d < 1e-3) return 0;
     // Your right is (cos yaw, -sin yaw) when forward is (-sin yaw, -cos yaw).
@@ -457,13 +515,13 @@ export class Game {
     const lv = levelForXp(xp);
     let into = xp;
     for (let i = 0; i < lv; i++) into -= xpForNextLevel(i);
-    const near = nearestSnake(w);
+    const near = nearestSnake(w, w.player);
     return {
       levelNumber: this.run.levelIndex + 1,
       levelName: w.level.name,
       xpLevel: lv,
       xpFraction: into / xpForNextLevel(lv),
-      keenEars: w.perks.includes('keenEars') && !!near && gapToSnake(w) < BALANCE.perks.keenEarsRange,
+      keenEars: w.perks.includes('keenEars') && !!near && gapToSnake(w, w.player) < BALANCE.perks.keenEarsRange,
       snakeBearing: near ? Math.atan2(-(near.pos[0].x - w.player.x), -(near.pos[0].z - w.player.z)) - w.player.yaw : 0,
     };
   }
@@ -475,11 +533,14 @@ export class Game {
     return [
       `state ${this.state}  seed ${this.seed}  level ${this.run.levelIndex + 1}  xp ${this.run.xp + w.xpGained}  perks ${this.run.perks.join(',') || '-'}`,
       `t ${w.elapsed.toFixed(1)}s  score ${scoreOf(w)}`,
-      `snakes ${w.snakes.map((q) => `${q.cells.length}${q.stump > 0 ? 's' : ''}${q.stunTimer > 0 ? '*' : ''}`).join(' ')}  step ${s ? s.interval.toFixed(3) : '-'}s  lives ${w.lives}`,
-      `items ${w.inventory.map((h, i) => `${i === w.selectedSlot ? '>' : ''}${h ? `${h.item}/${h.tier} x${h.uses} ${h.spoilLeft.toFixed(0)}s` : '-'}`).join('  ')}  drops ${w.drops.length}`,
+      `snakes ${w.snakes.map((q) => `${q.cells.length}${q.stump > 0 ? 's' : ''}${q.stunTimer > 0 ? '*' : ''}`).join(' ')}  step ${s ? s.interval.toFixed(3) : '-'}s  lives ${w.player.lives}`,
+      `items ${w.player.inventory.map((h, i) => `${i === w.player.selectedSlot ? '>' : ''}${h ? `${h.item}/${h.tier} x${h.uses} ${h.spoilLeft.toFixed(0)}s` : '-'}`).join('  ')}  drops ${w.drops.length}`,
       `player ${w.player.x.toFixed(1)},${w.player.z.toFixed(1)}  stam ${clamp(w.player.stamina, 0, 1).toFixed(2)}`,
-      `gap ${gapToSnake(w).toFixed(1)}  sprint ${BALANCE.player.sprintSpeed}`,
+      `gap ${gapToSnake(w, w.player).toFixed(1)}  sprint ${BALANCE.player.sprintSpeed}`,
       `fps ${this.perf.fps.toFixed(0)}  worst frame ${this.perf.shownWorstMs.toFixed(0)}ms  mouse peak ${this.perf.shownPeakDelta.toFixed(0)}px`,
-    ].join('\n');
+      this.mp ? this.mp.debugText() : '',
+    ]
+      .filter(Boolean)
+      .join('\n');
   }
 }
