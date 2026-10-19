@@ -2,15 +2,17 @@
 
 A first-person 3D reversal of Snake. You are the food. A snake that grows and keeps speeding up hunts you across a walled grid arena. Survive, collect pellets for points.
 
-Owner: Rafi. The plan for where this is going is in `docs/GAME_DESIGN.md` (10-level campaign, items and perks, friends-only multiplayer with voice). Work items are in `docs/BACKLOG.md`. Read both before starting a feature.
+Owner: Rafi. The plan for where this is going is in `docs/GAME_DESIGN.md` (10-level campaign, items and perks, friends-only multiplayer with voice; all built, multiplayer not deployed yet). Work items are in `docs/BACKLOG.md`. Read both before starting a feature.
 
 ## Commands
 
 - `npm install`, then `npm run dev` (Vite, http://localhost:5173).
 - `npm run check`: typecheck + lint + unit tests. Run it before saying a task is done. It must pass.
 - `npm run build`: typecheck + production build into `dist/` (deploys to any static host; `base` is `./`). `.github/workflows/deploy.yml` runs `check` + `build` and publishes `dist/` to GitHub Pages on every push to `main`; `ci.yml` runs the same checks on PRs and other branches. Neither runs the e2e test.
-- `npm run test:e2e`: Playwright smoke test against a production build (about 2 minutes: software WebGL draws the textured arena at a few fps). First time: `npx playwright install chromium`. Software WebGL flags are already set and the tests use `?quality=low`. Set `CHROMIUM_PATH` to use a specific browser binary.
-- Debug URL switches: `?debug=1` (debug panel, exposes `window.__snake`), `?seed=N` (same arena every run), `?god=1` (the snake cannot kill you), `?quality=low|high` (overrides the saved graphics quality), `?level=N` (runs start on level N).
+- `npm run server`: the multiplayer game server (Colyseus, port 2567 or `PORT`); `npm run server:dev` restarts it on changes. Run it next to `npm run dev` to play with friends locally: the client looks for it on the page's host, port 2567 (or `?server=host:port`, or `VITE_SERVER_URL` at build time). Voice needs HTTPS or localhost.
+- `npm run host`: host a game night from this PC: the game server plus a free Cloudflare quick tunnel (HTTPS, so voice works; no account), and it prints the link to send friends (`<GitHub Pages URL>?server=<tunnel host>`; `SNAKE_CLIENT_URL` changes the page). The tunnel address changes every run. The first run fetches Cloudflare's `cloudflared` into node_modules (the `cloudflared` npm package). This is how multiplayer is hosted (owner's choice: free, on only while you play). The Pages build must include the multiplayer code (it deploys from `main`).
+- `npm run test:e2e`: Playwright smoke test against a production build (about 2 minutes: software WebGL draws the textured arena at a few fps). First time: `npx playwright install chromium`. Software WebGL flags are already set and the tests use `?quality=low`. Set `CHROMIUM_PATH` to use a specific browser binary. It also starts the game server (with 25 s rounds via `SNAKE_ROUND_SECONDS`) for the two-browser multiplayer test; Chromium gets a fake microphone.
+- Debug URL switches: `?debug=1` (debug panel, exposes `window.__snake`), `?seed=N` (same arena every run), `?god=1` (the snake cannot kill you), `?quality=low|high` (overrides the saved graphics quality), `?level=N` (runs start on level N), `?server=host:port` (which game server), `?room=CODE` (fills in the room code: a link to share).
 
 ## Architecture rules (the important part)
 
@@ -21,6 +23,8 @@ Owner: Rafi. The plan for where this is going is in `docs/GAME_DESIGN.md` (10-le
 5. **Levels are data.** A level is a `LevelConfig` in `src/levels/`. Terrain, size, pillar count, snake behavior and speed, pellets and goal are all config. Add levels to `LEVELS` in `src/levels/index.ts`.
 6. **AI behaviors are pluggable.** `src/ai/index.ts` has a `BEHAVIORS` registry; each behavior takes the world and returns the target cell/point. New behaviors extend `BehaviorId` in `src/levels/types.ts` and register there.
 7. **The renderer only reads the world.** `GameRenderer.render(world, cameraView, ...)` builds meshes from state and holds no game rules.
+8. **Rules act on a player, never on "the" player.** `world.players[]` holds everyone; every rule takes the `PlayerState` it acts on, and `updateWorld` takes one input per player. `world.player` is the *local* player (players[0] in single player; a multiplayer client points it at itself) for the HUD, camera and renderer only; lint forbids it in `src/sim`, `src/ai`, `src/items` and `server/`. Events about one player carry `pid`.
+9. **Multiplayer: the server is the only authority** (ADR 0004). `server/` runs `src/sim` unchanged at a fixed 30 Hz; clients send inputs and draw snapshots (`src/net/protocol.ts`). Anything a snapshot must carry goes through `encodeSnapshot`/`applySnapshot` (add new world fields there, and to `tests/protocol.test.ts`). Clients rebuild the arena from settings and seed, so arena generation must stay deterministic.
 
 ## Layout
 
@@ -28,7 +32,11 @@ Owner: Rafi. The plan for where this is going is in `docs/GAME_DESIGN.md` (10-le
 src/
   config/balance.ts     all global tuning numbers
   sim/                  headless game rules (no three.js, no DOM)
-    world.ts            createWorld, updateWorld, updateDemo, score, danger, lives/respawn, swimming, relics
+    world.ts            createWorld, updateWorld (one input per player), updateDemo, score, danger, lives/respawn, swimming, relics, collidePlayer (shared with client prediction)
+    hunt.ts             who each snake hunts (nearest catchable player, or whoever hit it last), onFoot
+    match.ts            multiplayer: lobby settings, a terrain turned into a match arena (64/80/96), the round state, createMatchWorld, endRound
+    modes.ts            the five modes' rules: Classic, Snake and Players, Infection, Hot Egg, Escape Race
+    pilot.ts            a snake steered by a player: heading with momentum, dash, burrow, tail whip
     goals.ts            goalMet (endless/survive/collect/either/relicsThenGate/reachExit)
     items.ts            inventory: slots, use, spoil, drops falling and pickup
     projectiles.ts      slingshot stones (flight, hits, snake stun); firecrackers (arc, fuse, bang lures snakes)
@@ -49,7 +57,7 @@ src/
     pillars.ts pellets.ts grid.ts math.ts rng.ts types.ts
   ai/index.ts           BEHAVIORS registry: chase, predict, stalk, flank, burrow, ambush, coil
   items/index.ts        ITEMS registry: what each item does when used (sim code)
-  levels/               LevelConfig types, level01 (Plains), level02 (Ruins), level03 (Riverside), level04 (Tall grass), level05 (Corn maze), level06 (Swamp), level07 (Sandstorm desert), level08 (Frozen lake), level09 (Broken house), level10 (Dark cave), LEVELS, guide
+  levels/               modes.ts (mode and terrain names, one-line rules), LevelConfig types, level01 (Plains), level02 (Ruins), level03 (Riverside), level04 (Tall grass), level05 (Corn maze), level06 (Swamp), level07 (Sandstorm desert), level08 (Frozen lake), level09 (Broken house), level10 (Dark cave), LEVELS, guide
   render/               three.js only reads the world
     renderer.ts         GameRenderer: lights, sky, fog, shadows, quality, camera
     terrains.ts         per-terrain look registry (textures, sky, fog, sun, palette)
@@ -70,19 +78,24 @@ src/
     ice.ts              ice, cracked ice, cracks spreading, holes with floating chunks, snowfall
     house.ts            wallpapered walls, swinging doors, wardrobes, standing lamps
     cave.ts             lumpy rock walls, the ceiling, stalactites, glowing fungus (the flashlight is in renderer.ts)
+    avatars.ts          multiplayer: the other players as people (walk, downed, holding the egg), name tags, tags over steered snakes
+    matchViews.ts       multiplayer: the Classic nest
     viewmodel.ts        first-person gloved arms holding the selected item, own render pass; per-item rigs (pose + use motion)
     assets.ts           texture/HDRI/glTF loading from public/assets
     palette.ts          minimap colors (reads CSS variables)
-  ui/                   DOM: panels, HUD, minimap, inventory slots, item icons, settings form
+  ui/                   DOM: panels, HUD, minimap, inventory slots, item icons, settings form; lobby.ts (lobby card, voice controls), mpHud.ts (round clock, objective, player list, scoreboard)
+  net/                  multiplayer client side: protocol.ts (inputs, snapshots, room codes; shared with the server), schema.ts (lobby state), client.ts (Colyseus SDK), netMatch.ts (prediction, interpolation), voice.ts (WebRTC voice)
+  mp.ts                 multiplayer controller: entry card, lobby, rounds, camera, voice (loaded on demand)
   input.ts              keyboard, pointer lock, touch -> PlayerInput
   audio.ts              WebAudio square-wave beeps (no audio files)
   settings.ts           player settings: defaults, ranges, sanitize (pure)
   storage.ts            best score and settings (localStorage, guarded)
-  game.ts               state machine (menu/play/paused/dead/complete/perk), the campaign flow, frame loop
+  game.ts               state machine (menu/play/paused/dead/complete/perk/mp), the campaign flow, frame loop, sounds for sim events
   main.ts               entry, URL switches, WebGL-failure message
   style.css             design tokens + layout
-tests/                  Vitest unit tests (sim only, incl. a headless bot run)
-e2e/                    Playwright smoke test
+server/                 the game server: index.ts (Colyseus), SnakeRoom.ts (a room: lobby, rounds, fixed tick, snapshots, voice relay)
+tests/                  Vitest unit tests (sim, protocol, and the server end to end with bot clients; incl. a headless bot run)
+e2e/                    Playwright smoke test, and a two-browser multiplayer test
 public/assets/          CC0 textures, sky, tree model (see CREDITS.md); copied into the build as-is
 docs/                   GAME_DESIGN.md, BACKLOG.md, decisions/ (ADRs)
 prototype/              the original single-file version, kept for reference
@@ -124,6 +137,18 @@ prototype/              the original single-file version, kept for reference
 - Score per level = floor(elapsed * 10) + pellets * 100; the run score adds the levels up. Best run score in `localStorage` under `snake-hunt-best`.
 - Controls: WASD/arrows move, mouse looks (click to lock the pointer), Shift sprints, Q/E turn, Space jumps, click or F uses the selected item, R opens or shuts a door (Broken house), 1/2 or the mouse wheel picks the slot (the first click only locks the pointer), Esc/P pause, M mute, Enter starts. Settings (title and pause cards): mouse sensitivity, volume, FOV, render scale, graphics quality, saved under `snake-hunt-settings`. Touch: left side stick, right side look, RUN and pause buttons (no jump or item buttons yet). Pausing releases the pointer lock (otherwise the Resume button cannot be clicked).
 
+## Multiplayer (Phase 4; not deployed yet)
+
+- 2 to 4 friends in a private room: "Play with friends" on the title card, create a room (a 6-character code with no look-alike characters) or join one; `?room=CODE` fills the code in. The host picks terrain (any of the 10), mode, map size (64/80/96), snake speed (slow/normal/fast/ramping), rounds (1/3/5), round length (3/5/8 min), items (on/rare/off) and proximity voice, then starts. Started matches are locked. The host leaving ends the match for everyone; anyone else dropping has 12 s to reconnect, then is out. No perks or XP in matches. Between rounds a scoreboard shows for 6 s (a round win is a point); after the last round everyone goes back to the lobby.
+- A match arena is the campaign terrain scaled to the map size, with its goal, boss fight, relics and the corn maze's blank minimap off; the snake is beatable in every mode. Players start beside the start point, 2 cells apart (`BALANCE.multiplayer`).
+- Classic (co-op, 1 to 4): the snake starts and may grow longer per extra player; pellets you pick up are carried (up to 3) to the nest at the start; fill it (6 + 3 per player) or shrink every snake away to win; caught, you are downed 10 s (a teammate standing within 2.2 for 2 s gets you up where you lie; else you get up at your start); everyone down at once, or the clock running out, loses. The snake hunts the nearest player, or whoever last hit it (stone or cut) for 8 s.
+- Snake and Players (2+): one player steers the snake (third person behind its head; it turns with momentum and never reverses; dash on click/F, burrow on Space, tail whip on R knocks runners back and winds them); runners have 3 lives, a catch grows the snake by 3; runners win by surviving the clock or shrinking it; the snake wins when every runner is out. The role rotates each round.
+- Infection (2+): one AI snake; a caught player rises as a snake of their own after 1.5 s (6 long, steered like above). The last human standing wins; the clock running out wins for every human left.
+- Hot Egg (2+): one random player carries the egg; the snakes only hunt the carrier (anyone else they touch is shoved aside); touching another player passes it (2 s before it can pass back). A caught carrier is out and the egg goes to the nearest player. Last one left wins; at the clock, the carrier is out and the rest win.
+- Escape Race (2+): the terrain's exit is open from the start; caught, you are down 3 s and back at your start; firecrackers drop often. First one out wins.
+- Voice: WebRTC between every pair of players; push-to-talk (hold V, default) or open mic (a voice gate), per-player volume and mute, the host can mute anyone for everyone, proximity voice (host option: voices fade over 8 to 40 units and muffle behind walls). The browser asks for the mic when you enter the lobby; declining still lets you hear. No TURN relay.
+- Other players are drawn as people (`render/avatars.ts`) in their color (`--player-0..3`), with name tags; the minimap shows them as dots (a ring when downed, a halo on the egg carrier) and the nest. The match HUD shows the clock, the objective, the player list (talking, down, out, lives) and status messages; out of the round you watch from behind someone still in it.
+
 ## Known gaps
 
 - Touch controls and the game on a real phone have not been tested. Desktop first (design decision).
@@ -141,6 +166,10 @@ prototype/              the original single-file version, kept for reference
 - Assets are ~61 MB in the repo; a player only downloads the current terrain's textures.
 - The house has no furniture besides wardrobes, lamps and the key's table; touch has no R button yet.
 - When the last life is lost to anything but a snake (drowned, fell in), the death camera still turns to the nearest snake's head.
+- Multiplayer is hosted from Rafi's PC with `npm run host` (a quick tunnel: no uptime guarantee, a new address each session). There is no always-on server; `VITE_SERVER_URL` is unused for now.
+- No TURN relay: voice may not connect for a player behind a strict firewall (design decision: stay free).
+- Multiplayer has not been played by four real people over the internet; latency beyond a LAN is untested. Being caught is decided by the server, so on a slow connection a catch can land a moment after you think you got away.
+- Touch has no multiplayer controls beyond moving and looking (no jump, items, R, push-to-talk).
 - The desert floor is flat (no dunes): the grid has no height.
 - Swamp island shores follow the grid (stepped edges), like the river banks.
 - The corn maze's corn is painted cards plus a few 3D plants: up close a card is flat if you press your face into it.
@@ -149,6 +178,6 @@ prototype/              the original single-file version, kept for reference
 
 - Work one backlog item at a time. Say which item, ask for a plan first on anything touching more than 3 files.
 - Write the failing test first for sim changes; use `?seed=` and `?god=1` to reproduce things by hand.
-- After any rendering or UI change, run `npm run test:e2e` and look at the screenshots in `test-results/` (the test writes `title.png`, `play.png`, `dead.png`, `complete.png`, `perk.png`, `level3.png`, `level4.png`, `level5.png`, `level6.png`, `level7.png`, `level8.png`, `level9.png`, `level10.png`, `settings.png`, `inventory.png`).
+- After any rendering or UI change, run `npm run test:e2e` and look at the screenshots in `test-results/` (the test writes `title.png`, `play.png`, `dead.png`, `complete.png`, `perk.png`, `level3.png`, `level4.png`, `level5.png`, `level6.png`, `level7.png`, `level8.png`, `level9.png`, `level10.png`, `settings.png`, `inventory.png`; the multiplayer test writes `lobby.png`, `mp-play.png`, `mp-round.png`, `mp-snake.png`, `mp-runner.png`).
 - Record meaningful architecture decisions as a short file in `docs/decisions/`.
 - Do not commit unless asked. Keep commits small, one backlog item each.

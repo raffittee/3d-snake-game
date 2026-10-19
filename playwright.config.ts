@@ -17,13 +17,33 @@ export default defineConfig({
     viewport: { width: 1000, height: 640 },
     launchOptions: {
       executablePath: process.env.CHROMIUM_PATH || undefined,
-      args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
+      // Software WebGL; a fake microphone (voice chat) that needs no permission prompt; real local
+      // addresses for WebRTC so two pages on this machine can connect.
+      args: [
+        '--use-gl=angle',
+        '--use-angle=swiftshader',
+        '--enable-unsafe-swiftshader',
+        '--ignore-gpu-blocklist',
+        '--use-fake-ui-for-media-stream',
+        '--use-fake-device-for-media-stream',
+        '--disable-features=WebRtcHideLocalIpsWithMdns',
+      ],
     },
   },
-  webServer: {
-    command: 'npm run build && npm run preview -- --port 4173 --strictPort',
-    url: 'http://localhost:4173',
-    reuseExistingServer: true,
-    timeout: 120_000,
-  },
+  webServer: [
+    {
+      command: 'npm run build && npm run preview -- --port 4173 --strictPort',
+      url: 'http://localhost:4173',
+      reuseExistingServer: true,
+      timeout: 120_000,
+    },
+    {
+      // The game server for the multiplayer test, with short rounds so a whole match fits.
+      command: 'npm run server',
+      port: 2567,
+      reuseExistingServer: true,
+      timeout: 60_000,
+      env: { SNAKE_ROUND_SECONDS: '25', PORT: '2567' },
+    },
+  ],
 });
