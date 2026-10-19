@@ -2,7 +2,7 @@ import { BALANCE } from '../config/balance';
 import { cellToWorld, worldToCell } from './grid';
 import { hasPerk } from './perks';
 import { DoorState, Tile } from './tiles';
-import type { PlayerInput, SnakeState, World } from './types';
+import type { PlayerInput, PlayerState, SnakeState, World } from './types';
 
 /** The Door cells of the doorway cell `i` belongs to (a doorway is one or two cells wide). They open, shut and break together. */
 export function doorGroup(world: Pick<World, 'grid' | 'tiles'>, i: number): number[] {
@@ -36,9 +36,9 @@ export function initDoors(world: World): void {
   }
 }
 
-/** The door you would open or shut: the nearest Door cell within reach, preferring one in front of you. */
-export function doorInReach(world: World): { i: number; state: number } | null {
-  const { grid, player } = world;
+/** The door `player` would open or shut: the nearest Door cell within reach, preferring one in front of them. */
+export function doorInReach(world: World, player: PlayerState): { i: number; state: number } | null {
+  const { grid } = world;
   const n = grid.size;
   const reach = BALANCE.house.doorReach;
   const fx = -Math.sin(player.yaw);
@@ -75,11 +75,11 @@ export function doorInReach(world: World): { i: number; state: number } | null {
  * and how far your noise carries (footsteps, louder sprinting, none standing still or hidden;
  * Light feet quieter; a slammed door very loud for a moment).
  */
-export function updateHouse(world: World, input: PlayerInput, dt: number): void {
-  const { grid, player } = world;
+export function updateHouse(world: World, player: PlayerState, input: PlayerInput, dt: number): void {
+  const { grid } = world;
   const n = grid.size;
   if (input.interact) {
-    const d = doorInReach(world);
+    const d = doorInReach(world, player);
     if (d && d.state !== DoorState.Broken) {
       const group = doorGroup(world, d.i);
       const at = { x: cellToWorld(grid, d.i % n), z: cellToWorld(grid, (d.i / n) | 0) };
@@ -89,20 +89,20 @@ export function updateHouse(world: World, input: PlayerInput, dt: number): void 
       } else {
         // It will not shut on you, or on a snake lying in the doorway.
         const r = BALANCE.player.radius + grid.cell / 2;
-        const onYou = group.some((c) => Math.abs(cellToWorld(grid, c % n) - player.x) < r && Math.abs(cellToWorld(grid, (c / n) | 0) - player.z) < r);
+        const onYou = world.players.some((p) => !p.out && group.some((c) => Math.abs(cellToWorld(grid, c % n) - p.x) < r && Math.abs(cellToWorld(grid, (c / n) | 0) - p.z) < r));
         const onSnake = world.snakes.some((s) => s.cells.some((q) => group.includes(q.z * n + q.x)));
         if (!onYou && !onSnake) {
           for (const c of group) world.doorState[c] = DoorState.Shut;
-          world.slam = BALANCE.noise.slamSeconds;
+          player.slam = BALANCE.noise.slamSeconds;
           world.events.push({ type: 'doorShut', ...at });
         }
       }
     }
   }
   player.hidden = world.tiles[worldToCell(grid, player.z) * n + worldToCell(grid, player.x)] === Tile.Closet;
-  world.slam = Math.max(0, world.slam - dt);
+  player.slam = Math.max(0, player.slam - dt);
   const steps = player.moving && player.y <= 0 ? (player.sprinting ? BALANCE.noise.sprint : BALANCE.noise.walk) * (hasPerk(world, 'lightFeet') ? BALANCE.perks.lightFeetNoise : 1) : 0;
-  world.noise = Math.max(player.hidden ? 0 : steps, world.slam > 0 ? BALANCE.noise.slam : 0);
+  player.noise = Math.max(player.hidden ? 0 : steps, player.slam > 0 ? BALANCE.noise.slam : 0);
 }
 
 /**

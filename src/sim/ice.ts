@@ -2,7 +2,7 @@ import { BALANCE } from '../config/balance';
 import { cutSnake, fallThrough } from './cut';
 import { cellToWorld, worldToCell } from './grid';
 import { Tile } from './tiles';
-import type { World } from './types';
+import type { PlayerState, World } from './types';
 
 /** The patch of cracked ice joined (side by side) to cell `start`: the cells that go down together. */
 function patchOf(world: World, start: number): number[] {
@@ -30,10 +30,10 @@ function patchOf(world: World, start: number): number[] {
  * behind the head is on that cell the whole patch of cracked ice around it breaks into open water.
  * Whatever lies over the patch falls through: each snake is cut at its first segment there, losing
  * the segments over the hole (the front keeps going; the piece behind becomes its own snake or
- * withers, as with a machete); a head over it takes its whole snake down. Returns true when you were
- * standing on the patch (you fell in).
+ * withers, as with a machete); a head over it takes its whole snake down. Returns the players who
+ * were standing on the patch (they fell in).
  */
-export function updateIce(world: World, _dt: number): boolean {
+export function updateIce(world: World, _dt: number): PlayerState[] {
   const cfg = BALANCE.ice;
   const { grid, tiles } = world;
   const n = grid.size;
@@ -45,7 +45,7 @@ export function updateIce(world: World, _dt: number): boolean {
     world.cracking.push({ i, t: 0 });
     world.events.push({ type: 'iceCracking', x: cellToWorld(grid, h.x), z: cellToWorld(grid, h.z) });
   }
-  let fell = false;
+  const fell: PlayerState[] = [];
   for (let k = world.cracking.length - 1; k >= 0; k--) {
     const c = world.cracking[k];
     const x = c.i % n;
@@ -73,7 +73,7 @@ export function updateIce(world: World, _dt: number): boolean {
       if (over[0] === 0) fallThrough(world, snake);
       else cutSnake(world, snake, over[0], over[over.length - 1] - over[0] + 1);
     }
-    if (world.player.y <= 0 && patch.has(worldToCell(grid, world.player.z) * n + worldToCell(grid, world.player.x))) fell = true;
+    for (const p of world.players) if (!p.out && p.y <= 0 && patch.has(worldToCell(grid, p.z) * n + worldToCell(grid, p.x)) && !fell.includes(p)) fell.push(p);
     k = Math.min(k, world.cracking.length);
   }
   return fell;

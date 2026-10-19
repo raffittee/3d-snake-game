@@ -3,8 +3,9 @@ import { cellToWorld } from './grid';
 import { isAnySnakeCell } from './snake';
 import { Tile, isOpenGround } from './tiles';
 import type { World } from './types';
+import { minDistanceToPlayers } from './hunt';
 
-/** Place one pellet on a free cell away from the player. Gives up quietly if none is found. */
+/** Place one pellet on a free cell away from every player. Gives up quietly if none is found. */
 export function spawnPellet(world: World): void {
   const { grid, rng } = world;
   for (let k = 0; k < 300; k++) {
@@ -16,7 +17,7 @@ export function spawnPellet(world: World): void {
     if (world.relics.some((r) => r.x === x && r.z === z)) continue;
     if (isAnySnakeCell(world, x, z)) continue;
     if (world.pellets.some((p) => p.x === x && p.z === z)) continue;
-    if (Math.hypot(cellToWorld(grid, x) - world.player.x, cellToWorld(grid, z) - world.player.z) < BALANCE.pellets.minSpawnDistance) continue;
+    if (minDistanceToPlayers(world, cellToWorld(grid, x), cellToWorld(grid, z)) < BALANCE.pellets.minSpawnDistance) continue;
     world.pellets.push({ id: world.nextPelletId++, x, z });
     return;
   }

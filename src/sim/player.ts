@@ -7,9 +7,38 @@ import type { Cell, PlayerInput, PlayerState, World } from './types';
 
 export const NO_INPUT: PlayerInput = { forward: 0, strafe: 0, sprint: false, jump: false, useItem: false, selectSlot: -1, cycleSlot: 0, interact: false, turn: 0, lookYaw: 0, lookPitch: 0 };
 
-/** A fresh player standing on `start`. The caller turns them to face the snake. */
-export function createPlayer(grid: Grid, start: Cell): PlayerState {
-  return {
+/** A fresh player standing on `start` with empty slots and full lives. The caller turns them to face the snake. */
+export function createPlayer(grid: Grid, start: Cell, id = 0, slots: number = BALANCE.items.slots): PlayerState {
+  const p = {
+    id,
+    inventory: Array.from({ length: slots }, () => null),
+    selectedSlot: 0,
+    lives: BALANCE.lives.perLevel,
+    graceTimer: 0,
+    secondWindUsed: false,
+    noise: 0,
+    slam: 0,
+    battery: 0,
+    killerId: null,
+    down: 0,
+    revive: 0,
+    out: false,
+    pellets: 0,
+    carrying: 0,
+    snakeId: null,
+    egg: false,
+    escaped: false,
+  } as unknown as PlayerState;
+  placePlayer(p, grid, start);
+  return p;
+}
+
+/**
+ * Stand `p` on `start`, at rest (a respawn). Only the body is reset: items, lives, battery and
+ * everything else the player carries stay.
+ */
+export function placePlayer(p: PlayerState, grid: Grid, start: Cell): void {
+  Object.assign(p, {
     x: cellToWorld(grid, start.x),
     z: cellToWorld(grid, start.z),
     y: 0,
@@ -28,7 +57,7 @@ export function createPlayer(grid: Grid, start: Cell): PlayerState {
     tired: false,
     moving: false,
     sprinting: false,
-  };
+  });
 }
 
 /** Speed multiplier from pellet boosts: each one fades linearly to nothing over the level's boost time. */
@@ -38,8 +67,7 @@ export function boostScale(world: World): number {
   return 1 + world.boosts.reduce((sum, t) => sum + cfg.amount * Math.max(0, t / cfg.seconds), 0);
 }
 
-export function updatePlayer(world: World, input: PlayerInput, dt: number): void {
-  const p = world.player;
+export function updatePlayer(world: World, p: PlayerState, input: PlayerInput, dt: number): void {
   const cfg = BALANCE.player;
   p.yaw += input.lookYaw + input.turn * cfg.keyTurnRate * dt;
   p.pitch = clamp(p.pitch + input.lookPitch, -cfg.maxPitch, cfg.maxPitch);
@@ -92,7 +120,7 @@ export function updatePlayer(world: World, input: PlayerInput, dt: number): void
   if (input.jump && grounded && !p.swimming && !p.tired && p.stamina >= cfg.jumpStaminaCost) {
     p.vy = jumpSpeed(world);
     p.stamina -= cfg.jumpStaminaCost;
-    world.events.push({ type: 'jumped' });
+    world.events.push({ type: 'jumped', pid: p.id });
   }
   if (p.y > 0 || p.vy > 0) {
     // Exact for constant gravity, so the apex does not depend on the frame rate.

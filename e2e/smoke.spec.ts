@@ -61,7 +61,7 @@ test('the snake can end a run and the game-over card shows', async ({ page }) =>
   await page.evaluate(() => {
     const g = window.__snake;
     if (!g) return;
-    g.world.lives = 1;
+    g.world.player.lives = 1;
     g.world.player.x = g.world.snakes[0].pos[0].x + 8;
     g.world.player.z = g.world.snakes[0].pos[0].z;
   });
@@ -126,8 +126,8 @@ test('a machete cut splits the snake in two', async ({ page }) => {
     s.timer = 0;
     s.pos = cells.map((q) => ({ x: c(q.x), z: c(q.z) }));
     s.stunTimer = 1e6;
-    w.inventory[0] = { item: 'machete', tier: 'white', uses: 5, spoilLeft: 45, spoilTotal: 45 };
-    w.selectedSlot = 0;
+    w.player.inventory[0] = { item: 'machete', tier: 'white', uses: 5, spoilLeft: 45, spoilTotal: 45 };
+    w.player.selectedSlot = 0;
     w.player.x = c(23);
     w.player.z = c(22) + 1.7;
     w.player.yaw = 0;
@@ -169,8 +169,8 @@ test('Level 4 (Tall grass) loads, and a thrown firecracker bangs', async ({ page
   await page.evaluate(() => {
     const w = window.__snake?.world;
     if (!w) return;
-    w.inventory[0] = { item: 'firecracker', tier: 'white', uses: 1, spoilLeft: 40, spoilTotal: 40 };
-    w.selectedSlot = 0;
+    w.player.inventory[0] = { item: 'firecracker', tier: 'white', uses: 1, spoilLeft: 40, spoilTotal: 40 };
+    w.player.selectedSlot = 0;
   });
   await page.keyboard.press('KeyF');
   await expect.poll(() => page.evaluate(() => window.__snake?.world.firecrackers.length ?? 0), { timeout: 30_000 }).toBe(1);
@@ -190,8 +190,8 @@ test('Level 5 (Corn maze): no minimap until the map, a smoke bomb, the exit', as
   await page.evaluate(() => {
     const w = window.__snake?.world;
     if (!w) return;
-    w.inventory[0] = { item: 'smokeBomb', tier: 'white', uses: 1, spoilLeft: 40, spoilTotal: 40 };
-    w.selectedSlot = 0;
+    w.player.inventory[0] = { item: 'smokeBomb', tier: 'white', uses: 1, spoilLeft: 40, spoilTotal: 40 };
+    w.player.selectedSlot = 0;
   });
   await page.keyboard.press('KeyF');
   await expect.poll(() => page.evaluate(() => window.__snake?.world.snakes.every((s) => s.lure !== null)), { timeout: 30_000 }).toBe(true);
@@ -225,8 +225,8 @@ test('Level 6 (Swamp): mud, an energy drink, the lanterns and the boat', async (
   await page.evaluate(() => {
     const w = window.__snake?.world;
     if (!w) return;
-    w.inventory[0] = { item: 'energyDrink', tier: 'white', uses: 1, spoilLeft: 45, spoilTotal: 45 };
-    w.selectedSlot = 0;
+    w.player.inventory[0] = { item: 'energyDrink', tier: 'white', uses: 1, spoilLeft: 45, spoilTotal: 45 };
+    w.player.selectedSlot = 0;
   });
   await page.keyboard.press('KeyF');
   await expect(page.locator('#stamBar')).toHaveClass(/energized/, { timeout: 15_000 });
@@ -267,8 +267,8 @@ test('Level 7 (Sandstorm desert): a storm, a burrowing snake, a mongoose', async
     const s = w.level.storm;
     if (s) w.elapsed = s.first + 1;
     w.snakes[0].burrow.t = 1e9;
-    w.inventory[0] = { item: 'mongoose', tier: 'white', uses: 1, spoilLeft: 50, spoilTotal: 50 };
-    w.selectedSlot = 0;
+    w.player.inventory[0] = { item: 'mongoose', tier: 'white', uses: 1, spoilLeft: 50, spoilTotal: 50 };
+    w.player.selectedSlot = 0;
   });
   await expect.poll(() => page.evaluate(() => window.__snake?.world.snakes[0].under[0]), { timeout: 30_000 }).toBe(true);
   await page.keyboard.press('KeyF');
@@ -287,8 +287,8 @@ test('Level 8 (Frozen lake): cleats, cracked ice cuts the snake, beating it wins
   await page.evaluate(() => {
     const w = window.__snake?.world;
     if (!w) return;
-    w.inventory[0] = { item: 'iceCleats', tier: 'white', uses: 1, spoilLeft: 45, spoilTotal: 45 };
-    w.selectedSlot = 0;
+    w.player.inventory[0] = { item: 'iceCleats', tier: 'white', uses: 1, spoilLeft: 45, spoilTotal: 45 };
+    w.player.selectedSlot = 0;
   });
   await page.keyboard.press('KeyF');
   await expect(page.locator('#buffs')).toContainText('Cleats');
@@ -452,7 +452,7 @@ test('an item is picked up, used, and spoils', async ({ page }) => {
   await expect(page.locator('#slotUses0')).toHaveText('5', { timeout: 10_000 });
 
   await page.evaluate(() => {
-    const held = window.__snake?.world.inventory[0];
+    const held = window.__snake?.world.player.inventory[0];
     if (held) held.spoilLeft = 0.01;
   });
   await expect(page.locator('#slot0')).toHaveClass(/empty/, { timeout: 10_000 });

@@ -80,8 +80,8 @@ describe('sliding', () => {
 
   it('ice cleats last 20 s', () => {
     const w = rink();
-    w.inventory[0] = makeHeld('iceCleats', 'white');
-    w.selectedSlot = 0;
+    w.player.inventory[0] = makeHeld('iceCleats', 'white');
+    w.player.selectedSlot = 0;
     updateWorld(w, { ...NO_INPUT, useItem: true }, DT);
     expect(drainEvents(w).some((e) => e.type === 'cleatsOn')).toBe(true);
     expect(w.player.cleats).toBeCloseTo(BALANCE.items.defs.iceCleats.seconds, 0);
@@ -134,7 +134,7 @@ describe('cracked ice', () => {
     const w = rink(line({ x: 26, z: 30 }, 12));
     w.snakes[0].stunTimer = 1e9;
     w.invulnerable = false;
-    w.lives = 3;
+    w.player.lives = 3;
     const n = w.grid.size;
     w.tiles[30 * n + 21] = Tile.CrackedIce;
     w.tiles[31 * n + 21] = Tile.CrackedIce;
@@ -157,8 +157,8 @@ describe('beating the snake', () => {
     s.stunTimer = 1e9;
     putPlayer(w, { x: 30, z: 33 });
     // A machete cut at segment 2: the front would be 2 long.
-    w.inventory[0] = makeHeld('machete', 'white');
-    w.selectedSlot = 0;
+    w.player.inventory[0] = makeHeld('machete', 'white');
+    w.player.selectedSlot = 0;
     w.player.yaw = 0;
     w.player.x = s.pos[2].x;
     w.player.z = s.pos[2].z + 1.7;

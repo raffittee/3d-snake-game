@@ -3,6 +3,7 @@ import type { PerkId } from './perks';
 import type { Grid } from './grid';
 import type { Pathfinder } from './pathfinding';
 import type { Rng } from './rng';
+import type { MatchState } from './match';
 
 /** A grid cell. */
 export interface Cell {
@@ -17,6 +18,8 @@ export interface Vec2 {
 }
 
 export interface PlayerState {
+  /** Stable id: the index in `world.players` (0 in single player). Events about this player carry it as `pid`. */
+  id: number;
   x: number;
   z: number;
   /** Height of the feet above the floor, and vertical speed. 0 and 0 when standing. */
@@ -46,6 +49,38 @@ export interface PlayerState {
   /** For view bob and footstep logic. */
   moving: boolean;
   sprinting: boolean;
+  /** Inventory slots (BALANCE.items.slots), null when empty. Kept when a life is lost. */
+  inventory: Array<HeldItem | null>;
+  selectedSlot: number;
+  /** Lives left in this level (or match), including the one being played. */
+  lives: number;
+  /** Seconds of post-respawn safety left. */
+  graceTimer: number;
+  /** Second wind already spent in this level. */
+  secondWindUsed: boolean;
+  /** How far (cells) this player's noise carries this frame (footsteps, a slammed door); 0 when silent. */
+  noise: number;
+  /** Seconds left of a door slam's noise. */
+  slam: number;
+  /** Flashlight battery, seconds (Dark cave); 0 = dark. Kept when you lose a life, like your items. */
+  battery: number;
+  /** The snake that last caught this player (for the death camera), or null. */
+  killerId: number | null;
+  /** Multiplayer (sim/modes.ts). Seconds left lying downed (Classic, Escape Race), 0 when up. A downed player cannot move or be caught. */
+  down: number;
+  /** Classic: how far (0..1) a teammate standing beside this downed player has got them up. */
+  revive: number;
+  /** Out of the round: caught for good, or escaped (Escape Race). Out players watch and are ignored by snakes. */
+  out: boolean;
+  /** Pellets this player picked up (multiplayer scores), and pellets carried to the nest (Classic). */
+  pellets: number;
+  carrying: number;
+  /** The snake this player steers (Snake and Players, Infection), or null when on foot. */
+  snakeId: number | null;
+  /** Hot Egg: carrying the egg. */
+  egg: boolean;
+  /** Escape Race: reached the exit. */
+  escaped: boolean;
 }
 
 /** What the player asked for this frame. Built by the input layer, read by the sim. */
@@ -117,6 +152,19 @@ export interface SnakeState {
   lurk: Cell | null;
   /** Coil: the radius (cells) of the ring it is pulling in around you. */
   coil: number;
+  /** The player id it is hunting this update (sim/hunt.ts), or -1 with nobody to hunt. */
+  prey: number;
+  /** The player who last hit it (a stone, a cut) and seconds left of that grudge: it hunts them meanwhile. */
+  aggro: { id: number; time: number } | null;
+  /**
+   * The player steering it (Snake and Players, Infection), or null for the AI. A steered snake goes
+   * where its pilot points (sim/pilot.ts) and never into reverse.
+   */
+  pilot: number | null;
+  /** A steered snake's heading (radians, same convention as a player's yaw) and its abilities' timers. */
+  heading: number;
+  dash: number;
+  cooldowns: { dash: number; burrow: number; whip: number };
 }
 
 /** A piece cut off a snake: it twitches and withers away. No collision. World units. */
@@ -144,6 +192,8 @@ export interface Mongoose {
   targetId: number | null;
   /** At that snake's head, pinning it. */
   fighting: boolean;
+  /** The player who let it out (it waits by them). */
+  owner: number;
 }
 
 /** Rarer tiers carry more uses and spoil slower (BALANCE.items.tierScale). */
@@ -180,6 +230,8 @@ export interface Projectile {
   vz: number;
   /** Seconds left before it is removed. */
   life: number;
+  /** The player who shot or threw it. */
+  owner: number;
 }
 
 /** A firecracker lying on the ground with its fuse burning. World units. */
@@ -207,37 +259,37 @@ export type DeathCause = 'caught' | 'crushed' | 'drowned' | 'fell';
 
 /** Things that happened this frame. The game layer turns them into sound and UI. */
 export type SimEvent =
-  | { type: 'pelletCollected' }
+  | { type: 'pelletCollected'; pid: number }
   | { type: 'snakeAtePellet' }
   /** `x`, `z` in world units; `hidden`: its head is in tall grass (you hear it, you can't see it). */
   | { type: 'snakeStep'; step: number; distance: number; x: number; z: number; hidden: boolean }
-  | { type: 'died'; cause: DeathCause }
-  | { type: 'lifeLost'; cause: DeathCause; livesLeft: number }
-  | { type: 'secondWind' }
+  | { type: 'died'; pid: number; cause: DeathCause }
+  | { type: 'lifeLost'; pid: number; cause: DeathCause; livesLeft: number }
+  | { type: 'secondWind'; pid: number }
   | { type: 'wallSmashed'; x: number; z: number }
   | { type: 'relicFound'; left: number }
   | { type: 'gateOpened' }
   | { type: 'levelComplete' }
-  | { type: 'jumped' }
+  | { type: 'jumped'; pid: number }
   | { type: 'itemSpawned'; item: ItemId; tier: Tier }
-  | { type: 'itemPickedUp'; slot: number; item: ItemId; tier: Tier }
-  | { type: 'itemUsed'; slot: number; item: ItemId; usesLeft: number }
-  | { type: 'itemSpoiled'; slot: number; item: ItemId }
-  | { type: 'shotFired' }
-  | { type: 'firecrackerThrown' }
+  | { type: 'itemPickedUp'; pid: number; slot: number; item: ItemId; tier: Tier }
+  | { type: 'itemUsed'; pid: number; slot: number; item: ItemId; usesLeft: number }
+  | { type: 'itemSpoiled'; pid: number; slot: number; item: ItemId }
+  | { type: 'shotFired'; pid: number }
+  | { type: 'firecrackerThrown'; pid: number }
   | { type: 'firecrackerLanded'; x: number; z: number }
   /** `lured`: how many snakes heard it. */
   | { type: 'firecrackerBang'; x: number; z: number; lured: number }
-  | { type: 'smokeBomb'; x: number; z: number }
-  | { type: 'energyDrink' }
-  | { type: 'mongooseReleased' }
+  | { type: 'smokeBomb'; pid: number; x: number; z: number }
+  | { type: 'energyDrink'; pid: number }
+  | { type: 'mongooseReleased'; pid: number }
   | { type: 'mongooseFight'; x: number; z: number }
   | { type: 'mongooseGone' }
   | { type: 'snakeBurrowed'; x: number; z: number }
   | { type: 'snakeRising'; x: number; z: number }
   | { type: 'snakeSurfaced'; x: number; z: number }
   | { type: 'stormWarning' }
-  | { type: 'cleatsOn' }
+  | { type: 'cleatsOn'; pid: number }
   | { type: 'iceCracking'; x: number; z: number }
   | { type: 'iceBroke'; x: number; z: number }
   | { type: 'doorOpened'; x: number; z: number }
@@ -246,17 +298,29 @@ export type SimEvent =
   | { type: 'doorBroken'; x: number; z: number }
   /** An Ambush snake heard (or saw) you and strikes. */
   | { type: 'snakeNoticed'; x: number; z: number }
-  | { type: 'batteryIn' }
-  | { type: 'batteryDead' }
+  | { type: 'batteryIn'; pid: number }
+  | { type: 'batteryDead'; pid: number }
   /** The Mother Snake's fight moved on: 2 = it split in two, 3 = the last one coils. */
   | { type: 'bossPhase'; phase: number }
   | { type: 'mapFound' }
-  | { type: 'shotHit'; target: HitTarget }
+  | { type: 'shotHit'; pid: number; target: HitTarget }
   | { type: 'snakeStunned'; seconds: number }
   | { type: 'snakeCut'; result: CutResult; x: number; z: number }
   | { type: 'snakeSplitWarning'; snakeId: number }
   | { type: 'snakeDefeated' }
-  | { type: 'macheteSwing'; result: 'cut' | 'bounce' | 'miss' };
+  | { type: 'macheteSwing'; pid: number; result: 'cut' | 'bounce' | 'miss' }
+  /** Multiplayer (sim/modes.ts). */
+  | { type: 'playerDowned'; pid: number }
+  | { type: 'playerRevived'; pid: number; by: number }
+  | { type: 'playerOut'; pid: number }
+  | { type: 'playerInfected'; pid: number }
+  | { type: 'playerEscaped'; pid: number }
+  | { type: 'eggPassed'; from: number; to: number }
+  | { type: 'nestFilled'; pid: number; count: number; filled: number; need: number }
+  | { type: 'snakeDash'; pid: number }
+  | { type: 'snakeWhip'; pid: number; x: number; z: number; hits: number }
+  /** The round is over: who won it (player ids; empty = the snakes won), and why. */
+  | { type: 'roundOver'; winners: number[]; reason: string };
 
 export interface World {
   level: LevelConfig;
@@ -277,14 +341,20 @@ export interface World {
   /** The exit gate cell (Ruins, Corn maze); open once every relic (or the map) is found. */
   gate: Cell;
   gateOpen: boolean;
-  player: PlayerState;
+  /** Everyone on foot or steering a snake, in id order. Single player has one. */
+  players: PlayerState[];
+  /**
+   * The local player: `players[0]` in single player; a multiplayer client points it at its own
+   * player (src/net/netMatch.ts). A getter, not copied by snapshots. The HUD, camera and renderer
+   * follow it; game rules in src/sim and src/ai never use it: they take the player they act on
+   * (lint enforces this).
+   */
+  readonly player: PlayerState;
   /** Every live snake. A mid-body cut or a growth split adds one. */
   snakes: SnakeState[];
   nextSnakeId: number;
   /** Cut-off pieces withering away. */
   severed: Severed[];
-  /** The snake that ended the run (for the death camera). */
-  killerId: number | null;
   pellets: Pellet[];
   nextPelletId: number;
   pelletRespawn: number;
@@ -294,11 +364,6 @@ export interface World {
   perks: PerkId[];
   /** XP earned in this level; the game banks it into the run. */
   xpGained: number;
-  /** Second wind already spent in this level. */
-  secondWindUsed: boolean;
-  /** Inventory slots (BALANCE.items.slots), null when empty. Kept when a life is lost. */
-  inventory: Array<HeldItem | null>;
-  selectedSlot: number;
   /** Items lying in the arena. */
   drops: Drop[];
   /** Stones and firecrackers in flight. */
@@ -317,25 +382,17 @@ export interface World {
   /** Broken house: per cell, a Door's state (tiles.ts DoorState), and how long a snake has bashed it. */
   doorState: Uint8Array;
   doorDamage: Float32Array;
-  /** How far (cells) your noise carries this frame (footsteps, a slammed door); 0 when silent. */
-  noise: number;
-  /** Seconds left of a door slam's noise. */
-  slam: number;
   /** Mother Snake fight (Dark cave): 1 hunting, 2 split in two, 3 the last one coils; 0 on other levels. */
   bossPhase: number;
   /** The Mother's length at the start (for the split at half). */
   bossStartLength: number;
-  /** Flashlight battery, seconds (Dark cave); 0 = dark. Kept when you lose a life, like your items. */
-  battery: number;
   nextDropId: number;
   /** Seconds until the next drop tries to fall. */
   dropTimer: number;
-  /** Lives left in this level, including the one being played. */
-  lives: number;
-  /** Seconds of post-respawn safety left. */
-  graceTimer: number;
   status: 'playing' | 'dead' | 'complete';
   deathCause: DeathCause | null;
+  /** A multiplayer round's mode, timers and score (sim/match.ts), or null in the campaign. */
+  match: MatchState | null;
   /** Debug: when true the player cannot die. */
   invulnerable: boolean;
   events: SimEvent[];

@@ -1,8 +1,9 @@
 import { BALANCE } from '../config/balance';
 import type { Goal } from '../levels/types';
-import type { World } from './types';
+import type { PlayerState, World } from './types';
+import { onFoot } from './hunt';
 
-/** True once the player has done what `goal` asks. `endless` never ends. */
+/** True once the player (any player on foot) has done what `goal` asks. `endless` never ends. */
 export function goalMet(goal: Goal, world: World): boolean {
   switch (goal.kind) {
     case 'endless':
@@ -15,17 +16,21 @@ export function goalMet(goal: Goal, world: World): boolean {
       return goal.goals.some((g) => goalMet(g, world));
     case 'defeatAll':
       return world.snakes.length === 0;
-    case 'reachExit': {
-      const gx = (world.gate.x + 0.5) * world.grid.cell - world.grid.half;
-      const gz = (world.gate.z + 0.5) * world.grid.cell - world.grid.half;
-      return Math.hypot(world.player.x - gx, world.player.z - gz) <= BALANCE.arena.gateRadius;
-    }
+    case 'reachExit':
+      return atGate(world);
     case 'relicsThenGate':
     case 'mapThenExit': {
       if (world.relicsFound < (goal.kind === 'relicsThenGate' ? goal.relics : 1)) return false;
-      const gx = (world.gate.x + 0.5) * world.grid.cell - world.grid.half;
-      const gz = (world.gate.z + 0.5) * world.grid.cell - world.grid.half;
-      return Math.hypot(world.player.x - gx, world.player.z - gz) <= BALANCE.arena.gateRadius;
+      return atGate(world);
     }
   }
 }
+
+/** Player `p` stands at the exit gate. */
+export function playerAtGate(world: World, p: PlayerState): boolean {
+  const gx = (world.gate.x + 0.5) * world.grid.cell - world.grid.half;
+  const gz = (world.gate.z + 0.5) * world.grid.cell - world.grid.half;
+  return Math.hypot(p.x - gx, p.z - gz) <= BALANCE.arena.gateRadius;
+}
+
+const atGate = (world: World): boolean => world.players.some((p) => onFoot(p) && playerAtGate(world, p));

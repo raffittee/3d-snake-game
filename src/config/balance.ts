@@ -326,4 +326,62 @@ export const BALANCE = {
     gapOffset: 1.3,
     range: 13,
   },
+
+  /** Multiplayer matches (sim/match.ts, sim/modes.ts). First guesses: playtest with friends. */
+  multiplayer: {
+    maxPlayers: 4,
+    /** Seconds a snake keeps hunting whoever last hit it (Classic's aggro). */
+    aggroSeconds: 8,
+    /** Players start this many cells apart beside the start point. */
+    spawnSpacing: 2,
+    /** Per player beyond the first: the snake starts longer and may grow longer (Classic). */
+    lengthPerPlayer: 2,
+    maxLengthPerPlayer: 4,
+    /** Host's Snake speed setting: the snake's step time is multiplied by this (smaller is faster). Ramping eases from `rampFrom` to `rampTo` over the round. */
+    speed: { slow: 1.25, normal: 1, fast: 0.8, rampFrom: 1.25, rampTo: 0.7 },
+    /** Host's Items setting: how often drops fall (0 = never). */
+    itemRate: { on: 1, rare: 0.4, off: 0 },
+    /** Seconds between rounds (the scoreboard shows meanwhile; the server waits this long). */
+    roundBreak: 6,
+    classic: {
+      /** Seconds a caught player lies downed before getting up on their own at the start point. */
+      downSeconds: 10,
+      /** A teammate standing within `reviveRange` (world units) for `reviveSeconds` gets them up where they lie. */
+      reviveRange: 2.2,
+      reviveSeconds: 2,
+      /** Pellets you can carry at once, how near the nest (world units) to drop them in, and pellets to fill it. */
+      carryMax: 3,
+      nestRadius: 3,
+      nestBase: 6,
+      nestPerPlayer: 3,
+    },
+    /** Snake and Players: each runner's lives; a catch grows the snake. */
+    snakeAndPlayers: { lives: 3, growOnCatch: 3 },
+    /** Infection: a caught player becomes a snake this long, after `infectDelay` seconds. */
+    infection: { snakeLength: 6, infectDelay: 1.5 },
+    /** Hot Egg: passing it needs players within `passRange` (world units); then nobody can pass it back for `passCooldown` s. */
+    hotEgg: { passRange: 1.6, passCooldown: 2, knockback: 4, grace: 1.5 },
+    /** Escape Race: caught, you are down this long, then back at the start. Drops lean to firecrackers. */
+    escapeRace: { downSeconds: 3, firecrackerWeight: 6 },
+  },
+
+  /** A snake steered by a player (Snake and Players, Infection; sim/pilot.ts). */
+  pilot: {
+    /** How fast its heading follows where its pilot points (rad/s): its momentum. */
+    turnRate: 3.2,
+    /** Key turning (A/D or Q/E), rad/s. */
+    keyTurnRate: 2.6,
+    /** Dash (click / F): step time times `dashSpeed` for `dashSeconds`, then `dashCooldown` s. */
+    dashSpeed: 0.55,
+    dashSeconds: 1.6,
+    dashCooldown: 9,
+    /** Burrow (Space): under the ground for `burrowSeconds` (it cannot touch or be touched), then `burrowCooldown` s. */
+    burrowSeconds: 4,
+    burrowCooldown: 16,
+    /** Tail whip (R): runners within `whipRange` (world units) of its last segments are knocked back and winded. */
+    whipRange: 3,
+    whipSegments: 5,
+    whipKnockback: 4,
+    whipCooldown: 7,
+  },
 } as const;

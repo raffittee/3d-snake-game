@@ -197,12 +197,12 @@ describe('smoke bomb', () => {
   it('every snake loses track of you for 6 s and wanders off toward a spot far from you', () => {
     const w = quiet();
     putPlayer(w, { x: 31, z: 58 });
-    w.inventory[0] = makeHeld('smokeBomb', 'white');
-    w.selectedSlot = 0;
+    w.player.inventory[0] = makeHeld('smokeBomb', 'white');
+    w.player.selectedSlot = 0;
     updateWorld(w, { ...NO_INPUT, useItem: true }, DT);
     const events = drainEvents(w);
     expect(events.some((e) => e.type === 'smokeBomb')).toBe(true);
-    expect(w.inventory[0]).toBeNull();
+    expect(w.player.inventory[0]).toBeNull();
     expect(w.smokes).toHaveLength(1);
     for (const s of w.snakes) {
       expect(s.lure).not.toBeNull();

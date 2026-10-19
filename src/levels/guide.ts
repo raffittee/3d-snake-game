@@ -1,5 +1,6 @@
 import type { World } from '../sim/types';
 import type { Goal } from './types';
+import { MODE_INFO } from './modes';
 
 export interface GuideLines {
   goal: string;
@@ -48,5 +49,7 @@ function progressLines(goal: Goal, world: World): string[] {
 /** The three parts of the corner guide for the world's level. Pure, so it is unit-testable. */
 export function guideLines(world: World): GuideLines {
   const { guide, goal } = world.level;
+  // A multiplayer round: the mode's rule (the objective and clock are on the match HUD).
+  if (world.match) return { goal: MODE_INFO[world.match.mode].name, progress: '', rule: MODE_INFO[world.match.mode].short };
   return { goal: guide.goal, progress: progressLines(goal, world).join('\n'), rule: guide.rule };
 }

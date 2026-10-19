@@ -75,30 +75,30 @@ describe('dark cave layout', () => {
 describe('the flashlight', () => {
   it('starts with 90 s of battery, runs out, and a battery adds 60 s', () => {
     const w = hall(line({ x: 40, z: 10 }, 30));
-    expect(w.battery).toBe(BALANCE.cave.batteryStart);
-    w.battery = 0.5;
+    expect(w.player.battery).toBe(BALANCE.cave.batteryStart);
+    w.player.battery = 0.5;
     let dead = false;
     run(w, 1, (ev) => {
       if (ev.some((e) => e.type === 'batteryDead')) dead = true;
     });
     expect(dead).toBe(true);
-    expect(w.battery).toBe(0);
-    w.inventory[0] = makeHeld('battery', 'white');
-    w.selectedSlot = 0;
+    expect(w.player.battery).toBe(0);
+    w.player.inventory[0] = makeHeld('battery', 'white');
+    w.player.selectedSlot = 0;
     updateWorld(w, { ...NO_INPUT, useItem: true }, DT);
-    expect(w.battery).toBeCloseTo(BALANCE.items.defs.battery.seconds, 0);
+    expect(w.player.battery).toBeCloseTo(BALANCE.items.defs.battery.seconds, 0);
   });
 
   it('keeps its charge when you lose a life', () => {
     const w = hall(line({ x: 40, z: 10 }, 30));
-    w.battery = 42;
+    w.player.battery = 42;
     w.invulnerable = false;
     const s = w.snakes[0];
     w.player.x = s.pos[0].x;
     w.player.z = s.pos[0].z;
     updateWorld(w, NO_INPUT, DT);
-    expect(w.lives).toBe(BALANCE.lives.perLevel - 1);
-    expect(w.battery).toBeGreaterThan(41);
+    expect(w.player.lives).toBe(BALANCE.lives.perLevel - 1);
+    expect(w.player.battery).toBeGreaterThan(41);
   });
 });
 

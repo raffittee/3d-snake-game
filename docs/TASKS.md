@@ -149,15 +149,16 @@ Gate: a full 10-level run can be beaten and the boss feels fair.
 
 Gate: 4 friends finish a Classic match with no desync.
 
-- [ ] Node game server importing `src/sim` unchanged (authoritative, fixed tick), private rooms, 6-character codes, host leaving ends the match
-- [ ] Client prediction/interpolation for the player; snapshot interpolation for the snake
-- [ ] Mode: Classic co-op (downed and revive, aggro, nest)
-- [ ] Mode: Snake and Players
-- [ ] Mode: Infection
-- [ ] Mode: Hot Egg
-- [ ] Mode: Escape Race
-- [ ] Voice: WebRTC mesh, push-to-talk (V) and open mic, per-player mute/volume, optional proximity voice, host mute
-- [ ] Deploy: static client plus a small always-on server (HTTPS for the mic)
+- [x] Node game server importing `src/sim` unchanged (authoritative, fixed tick), private rooms, 6-character codes, host leaving ends the match (`server/`, Colyseus 0.18; `npm run server`; `tests/server.test.ts` plays a 4-bot round)
+- [x] Client prediction/interpolation for the player; snapshot interpolation for the snake (`src/net/netMatch.ts`: you are predicted and reconciled; others drawn 110 ms back; snakes run their step progress between snapshots. ADR 0004)
+- [x] Mode: Classic co-op (downed and revive, aggro, nest)
+- [x] Mode: Snake and Players (third person, dash / burrow / tail whip, the role rotates each round)
+- [x] Mode: Infection
+- [x] Mode: Hot Egg
+- [x] Mode: Escape Race
+- [x] Voice: WebRTC mesh, push-to-talk (V) and open mic, per-player mute/volume, optional proximity voice, host mute (`src/net/voice.ts`)
+- [x] Deploy: static client (GitHub Pages) plus the server hosted from your PC through a free Cloudflare quick tunnel (`npm run host`; HTTPS for the mic). Your choice over an always-on host. The Pages build needs this branch merged to `main`.
+- [ ] Playtest gate: 4 friends finish a Classic match with no desync (needs you and three friends; the automated version passes: `tests/server.test.ts`, `e2e/multiplayer.spec.ts`)
 
 ## Later
 
@@ -171,5 +172,5 @@ Gate: 4 friends finish a Classic match with no desync.
 - [x] BFS can target the snake's own body, so it can very rarely overlap itself: fixed with the multi-snake pathing (a snake never steps into a blocked cell); covered by the several-snakes test
 - [ ] Pillar generation does not check arena connectivity
 - [x] Collision is 2D only; jumping needs a height dimension (snake segments are height-aware now; pillars and walls are always full height)
-- [ ] three.js and the game are ~700 kB in one JS chunk (184 kB gzipped); consider splitting. Assets in `public/assets` add ~15 MB (loaded at start).
+- [ ] three.js and the game are ~890 kB in one JS chunk (247 kB gzipped); multiplayer is split off and loaded on demand (194 kB, 62 kB gzipped). Consider splitting more. Assets in `public/assets` are ~61 MB (only the current terrain's load).
 - [ ] Visual regression is manual screenshot review only (matters more once the realistic look lands)

@@ -1,6 +1,122 @@
-# Changes for review (Phase 3, while you were away)
+# Changes for review
 
-Written for Rafi, to review on your return. Nothing here is committed. `npm run check` and the e2e smoke tests pass at the end of each level below.
+Written for Rafi. Newest first: Phase 4 (multiplayer), then Phase 3 (Levels 4 to 10). **Decisions I made** lists the calls I would normally have asked you about, each with what I picked and why, so you can overturn them.
+
+# Phase 4: Multiplayer
+
+You picked Colyseus, the whole of Phase 4 except the deploy, and no perks in matches. Nothing is committed.
+
+## At a glance
+
+- **Built:**
+  - the game server (`server/`), running the same sim as the browser, authoritative at 30 Hz
+  - private rooms with 6-character codes, a lobby with the host's settings, and rounds with a scoreboard
+  - client prediction and smoothing
+  - all five modes: Classic, Snake and Players, Infection, Hot Egg, Escape Race
+  - voice chat, peer to peer, with push-to-talk or open mic, per-player volume and mute, host mute and proximity voice
+  - other players drawn as people with name tags
+- **Tests:**
+  - **Unit tests:** 264, of which 36 are new.
+    - The modes, for every terrain at every map size.
+    - Determinism.
+    - Snapshots round-tripping.
+    - The real server with 4 bot clients playing a Classic round. Every client's copy matched the server's (no desync).
+  - **Two-browser e2e test:** host, join by link, voice connects, a Classic round to the scoreboard, then Snake and Players, then the host leaves. The 14 single-player e2e tests still pass.
+- **Single player is unchanged:** the same 228 tests pass. The network code only downloads when you click "Play with friends".
+- **Hosting:** you chose your PC plus a free Cloudflare tunnel. `npm run host` starts the server and the tunnel and prints the link to send. Tested: two bots played through a real tunnel at a full 20 snapshots a second.
+- **Still yours:**
+  - **Merge to `main`:** the GitHub Pages build (which your friends open) only has multiplayer once this branch is merged.
+  - **The gate:** 4 friends finish a Classic match with no desync.
+  - **Committing:** nothing is committed.
+
+## How to host a game night
+
+1. `npm run host`, and keep that window open. The first run downloads Cloudflare's `cloudflared` into `node_modules`.
+2. It prints a link like `https://raffittee.github.io/3d-snake-game/?server=some-words.trycloudflare.com`. Open it yourself, click "Play with friends" and create a room.
+3. In the lobby, "Copy invite link" gives a link with the server and the room code. Send it to your friends.
+4. Ctrl+C stops it. The tunnel address changes every time, so send a fresh link each session.
+
+## How to try it on one machine
+
+1. Run `npm run server` in one terminal and `npm run dev` in another.
+2. Open `http://localhost:5173` in two browser windows (or two browsers). Click "Play with friends", create a room in one, and join with the code in the other. A link with `?room=CODE` fills the code in for you.
+3. Voice needs a microphone and works on localhost. Over the network it needs HTTPS, which comes with the deploy.
+4. To test on your LAN, open `http://<your-PC-IP>:5173` on the other machine. The page looks for the server on the same host at port 2567. Voice there needs HTTPS.
+
+## What you get
+
+- **Rooms:**
+  - "Play with friends" on the title card leads to your name (remembered), Create a room, or a code to Join.
+  - Codes are 6 characters, never 0/O or 1/I/L.
+  - Up to 4 players. A started match is locked.
+  - If the host leaves, the match ends for everyone.
+- **Lobby:**
+  - The host sets terrain (all 10), mode, map size (64/80/96), snake speed (slow/normal/fast/ramping), rounds (1/3/5), round length (3/5/8 min), items (on/rare/off) and proximity voice.
+  - Everyone else sees the settings greyed out.
+  - Each player has a volume slider and Mute. The host also has "Mute for all".
+  - Start stays disabled until the mode has enough players.
+- **A match:**
+  - The terrain's level is scaled to the map size; players start side by side.
+  - A clock and the objective show at the top, the players (talking, down, out, lives) on the left, and messages mid-screen (downed, caught, out).
+  - Between rounds a scoreboard shows for 6 s; a round win is a point.
+  - After the last round you go back to the lobby.
+  - Esc opens a pause card, but the match goes on; voice and per-player volume are there.
+- **Steering a snake** (Snake and Players, Infection):
+  - Third person, behind its head.
+  - Mouse or A/D turns it, with momentum, and it never reverses.
+  - Click dashes, Space burrows, R whips its tail.
+- **Others:**
+  - Other players appear as an explorer figure in their color (jacket, backpack, cap), walking, lying down when downed, and cradling the egg in Hot Egg.
+  - Name tags show above them and above player-steered snakes.
+  - The minimap shows them as dots and shows the nest.
+- **Network:**
+  - **Your movement:** predicted on your machine and corrected by the server.
+  - **Other players:** drawn about 0.1 s behind, smoothed.
+  - **Snakes:** glide between snapshots exactly as the sim draws them.
+  - **Bandwidth:** about 1 KB per snapshot, 20 per second (about 20 KB/s per player).
+- **Architecture:** ADR `docs/decisions/0004-multiplayer-architecture.md`.
+
+## Decisions I made
+
+1. **Colyseus packages:** `@colyseus/core` plus the ws transport, not the `colyseus` meta package.
+   - The meta package pulls in auth, monitor, playground and Redis.
+   - `npm audit` still reports one advisory: `elliptic`, through `@colyseus/auth`, which `@colyseus/core` pulls in as an optional peer. It is only used for OAuth logins, which we never load.
+2. **Lobby vs match:** the lobby uses Colyseus synced state; the match uses our own compact snapshots. The sim is plain objects, and Colyseus's state sync wants its own schema classes.
+3. **`world.player` now means "the local player":** it is the first player in single player, and your own player on a client. Game rules take the player they act on, and a lint rule enforces it.
+4. **Classic:**
+   - The nest is at the start: 6 pellets plus 3 per player.
+   - You carry up to 3 pellets and lose them if you go down.
+   - A downed player nobody helps gets up at their start after 10 s; a teammate beside them for 2 s gets them up where they lie.
+   - Running out of time loses.
+   - Aggro lasts 8 s after a stone or cut.
+   - Per extra player the snake starts 2 segments longer and may grow 4 longer.
+5. **Snake and Players:** runners have 3 lives, and a catch grows the snake by 3. Abilities: dash 1.6 s every 9 s, burrow 4 s every 16 s, tail whip every 7 s (knocks runners back and empties their stamina).
+6. **Infection:** a caught player rises as a 6-long snake after 1.5 s.
+7. **Hot Egg:** the snake shoves anyone but the carrier aside (no catch). A pass cannot go straight back (2 s). At the clock, the carrier is out and the rest win.
+8. **Escape Race:** caught means 3 s down, then back to your start. Firecrackers drop about 6 times as often as anything else.
+9. **Every match arena:** the snake is beatable, there is no boss and no relics, the minimap is on, and no perks or XP.
+10. **Reconnect:** a dropped player has 12 s to come back, the host included. After that the player is out of the round, or the match ends if it was the host.
+11. **Push-to-talk is V by default;** your choice of push-to-talk or open mic is remembered. Open mic only sends while it hears you (a simple voice gate).
+12. **Player colors** are new tokens `--player-0..3`: muted ochre, teal, slate and olive. Never red, which stays danger-only.
+13. **The round clock** turns the accent color in its last 30 s, not red.
+
+## What to watch in a playtest
+
+- **Latency over the internet:** everything so far ran on one machine. Watch whether being caught feels fair at your friends' pings.
+- **Voice through home routers:** there is no relay server, by design, so a strict firewall can block a player's voice.
+- **Balance:** nest size, revive range and time, the snake's abilities, Hot Egg pass range. All numbers are in `BALANCE.multiplayer` and `BALANCE.pilot`.
+- **The software-WebGL tests ran at 1 to 3 fps:** fine for logic, says nothing about smoothness on real hardware.
+
+## Not done
+
+- **An always-on server:** there isn't one. The game is only joinable while you run `npm run host`, and Cloudflare gives quick tunnels no uptime guarantee.
+- **Touch controls in multiplayer:** you can only move and look.
+
+---
+
+# Phase 3: Campaign (Levels 4 to 10)
+
+Written while you were away. Since committed (six commits on `feat/phase3-campaign`). `npm run check` and the e2e smoke tests passed at the end of each level below.
 
 The **Decisions I made** lists are the calls I would normally have asked you about. Each one says what I picked and why, so you can overturn it.
 

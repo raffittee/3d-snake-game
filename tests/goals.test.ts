@@ -101,7 +101,7 @@ describe('level completion in updateWorld', () => {
 
   it('dying on the last life in the same frame as meeting the goal counts as a death', () => {
     const w = worldWith(COLLECT, false);
-    w.lives = 1;
+    w.player.lives = 1;
     w.pelletsCollected = 10;
     const head = w.snakes[0].pos[0];
     w.player.x = cellToWorld(w.grid, worldToCell(w.grid, head.x));
